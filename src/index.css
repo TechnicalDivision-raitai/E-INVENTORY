@@ -771,6 +771,7 @@ header.mast {
 .btn:hover:not(:disabled) {
   background: var(--sunk);
   border-color: var(--line-strong);
+  color: var(--fg);
   box-shadow: var(--glow-box);
 }
 
@@ -782,8 +783,12 @@ header.mast {
   box-shadow: 0 0 12px rgba(208, 244, 222, 0.9);
 }
 
+.btn.primary:hover,
 .btn.primary:hover:not(:disabled) {
-  opacity: 0.92;
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #ffffff;
+  filter: brightness(0.92);
   box-shadow: var(--glow-box-strong);
 }
 
@@ -796,6 +801,7 @@ header.mast {
 .btn.danger:hover:not(:disabled) {
   background: var(--bad-soft);
   border-color: var(--bad);
+  color: var(--bad);
 }
 
 .btn.small {
@@ -1144,7 +1150,8 @@ label.f > textarea {
   background: var(--surface);
 }
 
-.seg .btn[aria-pressed="true"] {
+.seg .btn[aria-pressed="true"],
+.seg .btn[aria-pressed="true"]:hover {
   background: var(--ink);
   border-color: var(--mint);
   color: #ffffff;
