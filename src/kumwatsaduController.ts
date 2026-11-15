@@ -1120,6 +1120,484 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       msg('inMsg', errText(err), 1);
     }
   });
+  const ICO_EYE =
+    '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
+  const ICO_PRINT =
+    '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>';
+  const ICO_WORD =
+    '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M8.5 13.5 10 18l2-3.5 2 3.5 1.5-4.5"/></svg>';
+  const ICO_EDIT =
+    '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+
+  let modalMvId: string | null = null;
+  let modalOpenedFromView = false;
+
+  function closeMoveDetail() {
+    const mod = $('mvDetailModal');
+    if (mod) mod.hidden = true;
+    modalMvId = null;
+    modalOpenedFromView = false;
+  }
+  $('mvDetailClose')?.addEventListener('click', closeMoveDetail);
+  $('mvDetailModal')?.addEventListener('click', (e: MouseEvent) => {
+    if (e.target === $('mvDetailModal')) closeMoveDetail();
+  });
+  document.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key === 'Escape' && $('mvDetailModal') && !$('mvDetailModal').hidden) {
+      closeMoveDetail();
+    }
+  });
+
+  function openMoveDetail(mv: any) {
+    if (!mv) return;
+    modalMvId = mv.id;
+    modalOpenedFromView = false;
+    const isOut = mv.kind === 'out';
+    const titleEl = $('mvDetailTitle');
+    const subEl = $('mvDetailSub');
+    const bodyEl = $('mvDetailBody');
+    const footEl = $('mvDetailFoot');
+    if (!bodyEl || !footEl) return;
+
+    if (titleEl) {
+      titleEl.textContent = (isOut ? 'รายละเอียดใบเบิกวัสดุ เลขที่ ' : 'รายละเอียดใบรับวัสดุ เลขที่ ') + (mv.no || '—');
+    }
+    if (subEl) {
+      subEl.textContent = `ปีงบประมาณ ${mv.fy || fyOf(mv.date)} · วันที่ ${thDateFull(mv.date) || '—'} · ${(mv.lines || []).length} รายการ`;
+    }
+
+    const kvItems: Array<{ k: string; v: string; full?: boolean }> = isOut
+      ? [
+          { k: 'เลขที่ใบเบิก', v: mv.no || '—' },
+          { k: 'วันที่เบิก', v: thDateFull(mv.date) || '—' },
+          { k: 'ผู้ขอเบิก', v: mv.requester || '—' },
+          { k: 'ตำแหน่งผู้เบิก', v: mv.reqPos || '—' },
+          { k: 'เพื่อใช้ในงาน', v: mv.purpose || '—', full: true },
+          { k: 'หมายเหตุ', v: mv.note || '—', full: true },
+        ]
+      : [
+          { k: 'เลขที่ใบรับ', v: mv.no || '—' },
+          { k: 'วันที่รับ', v: thDateFull(mv.date) || '—' },
+          { k: 'ประเภทการรับ', v: SRC[mv.src] || '—' },
+          { k: 'วันที่ตรวจรับ', v: mv.src === 'opening' ? '—' : thDateFull(mv.inspectDate) || '—' },
+          { k: 'ที่มา / ผู้ขาย', v: mv.vendor || '—' },
+          { k: 'เลขที่ใบสั่งซื้อ/จ้าง', v: mv.poNo || '—' },
+          { k: 'เลขที่ใบส่งของ', v: mv.invoiceNo || '—' },
+          { k: 'หมายเหตุ', v: mv.note || '—', full: true },
+        ];
+
+    const kvHtml = `<div class="mv-kv-grid">${kvItems
+      .map(
+        (it) =>
+          `<div class="mv-kv${it.full ? ' full' : ''}"><span class="mv-kv-k">${esc(it.k)}</span><span class="mv-kv-v">${esc(
+            it.v
+          )}</span></div>`
+      )
+      .join('')}</div>`;
+
+    const lines = mv.lines || [];
+    const linesRowsHtml = lines
+      .map((l: any, idx: number) => {
+        const m = matById(l.mid);
+        const name = m ? m.name : '(วัสดุถูกลบ)';
+        const unit = m?.unit || '';
+        const metaParts = [m?.code ? `รหัส ${m.code}` : '', m?.cat || '', m?.loc ? `ที่เก็บ ${m.loc}` : ''].filter(Boolean);
+        let unitPrice = +l.price || 0;
+        let lineTotal = r2((+l.qty || 0) * unitPrice);
+        if (isOut) {
+          const led = (L.get(l.mid) || []).find((x) => x.mv === mv);
+          lineTotal = led ? led.outV : 0;
+          unitPrice = (+l.qty || 0) > 0 ? lineTotal / +l.qty : 0;
+        }
+        return `<tr>
+          <td class="num" style="width:52px">${idx + 1}</td>
+          <td><div>${esc(name)}</div>${metaParts.length ? `<div class="sub">${esc(metaParts.join(' · '))}</div>` : ''}</td>
+          <td class="num">${fmtQ(l.qty)}${unit ? ' ' + esc(unit) : ''}</td>
+          <td class="num">${fmtB(unitPrice)}</td>
+          <td class="num">${fmtB(lineTotal)}</td>
+        </tr>`;
+      })
+      .join('');
+
+    const totalVal = moveValue(mv);
+    const linesHtml = `<div>
+      <div class="mv-lines-title">รายการวัสดุทั้งหมด (${lines.length} รายการ)</div>
+      <div class="tablebox">
+        <table>
+          <thead>
+            <tr>
+              <th class="num" style="width:52px">ลำดับ</th>
+              <th>ชื่อหรือชนิดวัสดุ</th>
+              <th class="num">${isOut ? 'จำนวนเบิก' : 'จำนวนรับ'}</th>
+              <th class="num">${isOut ? 'ราคาเฉลี่ย/หน่วย (บาท)' : 'ราคา/หน่วย (บาท)'}</th>
+              <th class="num">จำนวนเงิน (บาท)</th>
+            </tr>
+          </thead>
+          <tbody>${linesRowsHtml || '<tr><td colspan="5" style="text-align:center;color:var(--muted)">ไม่มีรายการวัสดุ</td></tr>'}</tbody>
+          <tfoot>
+            <tr>
+              <td colspan="4" style="text-align:right">รวมมูลค่าทั้งสิ้น</td>
+              <td class="num">${fmtB(totalVal)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>`;
+
+    bodyEl.innerHTML = kvHtml + linesHtml;
+
+    const btns: string[] = [];
+    if (isOut) {
+      btns.push(`<button type="button" class="btn primary" data-md-prn="${esc(mv.id)}">พิมพ์ใบเบิก</button>`);
+      btns.push(`<button type="button" class="btn" data-md-slip="${esc(mv.id)}">ดาวน์โหลด Word</button>`);
+    }
+    if (canWrite) {
+      btns.push(`<button type="button" class="btn" data-md-edit="${esc(mv.id)}">แก้ไขข้อมูล</button>`);
+    }
+    btns.push(`<button type="button" class="btn" data-md-close="1">ปิดหน้าต่าง</button>`);
+    footEl.innerHTML = btns.join('');
+
+    $('mvDetailModal').hidden = false;
+  }
+
+  function openMoveEdit(mv: any, fromView = false) {
+    if (!mv) return;
+    if (!canWrite) return openMoveDetail(mv);
+    modalMvId = mv.id;
+    modalOpenedFromView = fromView;
+    const isOut = mv.kind === 'out';
+    const titleEl = $('mvDetailTitle');
+    const subEl = $('mvDetailSub');
+    const bodyEl = $('mvDetailBody');
+    const footEl = $('mvDetailFoot');
+    if (!bodyEl || !footEl) return;
+
+    if (titleEl) {
+      titleEl.textContent = (isOut ? 'แก้ไขใบเบิกวัสดุ เลขที่ ' : 'แก้ไขใบรับวัสดุ เลขที่ ') + (mv.no || '');
+    }
+    if (subEl) {
+      subEl.textContent = 'แก้ไขรายละเอียดและรายการวัสดุทั้งหมดในหน้านี้ แล้วกดบันทึกการแก้ไข';
+    }
+
+    const headerFormHtml = isOut
+      ? `<div class="mv-edit-section"><div class="grid">
+          <label class="f c4">เลขที่ใบเบิก<input id="mdNo" value="${esc(mv.no || '')}" /></label>
+          <label class="f c4">วันที่เบิก <span class="req">*</span><input id="mdDate" type="date" value="${esc(
+            mv.date || todayISO()
+          )}" /></label>
+          <label class="f c4">ผู้เบิก <span class="req">*</span><input id="mdReq" list="peopleList" value="${esc(
+            mv.requester || ''
+          )}" /></label>
+          <label class="f c4">ตำแหน่ง<input id="mdPos" list="posList" value="${esc(mv.reqPos || '')}" /></label>
+          <label class="f c8">เพื่อใช้ในงาน <span class="req">*</span><input id="mdPurpose" value="${esc(
+            mv.purpose || ''
+          )}" /></label>
+          <label class="f c12">หมายเหตุ<input id="mdNote" value="${esc(mv.note || '')}" /></label>
+        </div></div>`
+      : `<div class="mv-edit-section"><div class="grid">
+          <label class="f c4">ประเภทการรับ<select id="mdSrc">${Object.entries(SRC)
+            .map(([k, v]) => `<option value="${esc(k)}"${k === mv.src ? ' selected' : ''}>${esc(v)}</option>`)
+            .join('')}</select></label>
+          <label class="f c4">เลขที่ใบรับ<input id="mdNo" value="${esc(mv.no || '')}" /></label>
+          <label class="f c4">วันที่รับ <span class="req">*</span><input id="mdDate" type="date" value="${esc(
+            mv.date || todayISO()
+          )}" /></label>
+          <label class="f c6">ผู้ขาย / รับจาก <span class="req" id="mdVendorReq">*</span><input id="mdVendor" value="${esc(
+            mv.vendor || ''
+          )}" /></label>
+          <label class="f c3" id="mdInspectLbl">วันที่ตรวจรับ <span class="req">*</span><input id="mdInspect" type="date" value="${esc(
+            mv.inspectDate || mv.date || todayISO()
+          )}" /></label>
+          <label class="f c3" id="mdPoLbl">เลขที่ใบสั่งซื้อ/จ้าง<input id="mdPo" value="${esc(mv.poNo || '')}" /></label>
+          <label class="f c4">เลขที่ใบส่งของ<input id="mdInv" value="${esc(mv.invoiceNo || '')}" /></label>
+          <label class="f c8">หมายเหตุ<input id="mdNote" value="${esc(mv.note || '')}" /></label>
+        </div></div>`;
+
+    const linesSectionHtml = `<div class="mv-edit-section">
+      <div class="mv-lines-title">${isOut ? 'รายการวัสดุที่ขอเบิก' : 'รายการวัสดุที่รับเข้า'}</div>
+      <div class="lines ${isOut ? 'out' : 'in'}" id="mdEditLines">
+        <div class="lnhead">${
+          isOut
+            ? '<span>วัสดุ</span><span>จำนวนเบิก</span><span>คงเหลือในคลัง</span><span></span>'
+            : '<span>วัสดุ</span><span>จำนวน</span><span>ราคา/หน่วย (บาท)</span><span>รวมเงิน</span><span></span>'
+        }</div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-top:10px">
+        <button type="button" class="btn small" id="mdAddLine">+ เพิ่มรายการวัสดุ</button>
+        ${isOut ? '' : '<div class="linesum">รวมทั้งสิ้น <span id="mdInSum">0.00</span> บาท</div>'}
+      </div>
+      <div class="mv-edit-msg" id="mdEditMsg"></div>
+    </div>`;
+
+    bodyEl.innerHTML = headerFormHtml + linesSectionHtml;
+
+    const mdLinesBox = $('mdEditLines');
+    const sumMdIn = () => {
+      if (isOut || !$('mdInSum')) return;
+      const tot = [...mdLinesBox.querySelectorAll('.ln')].reduce((s: number, r: any) => {
+        const i = r.querySelectorAll('input');
+        return s + r2((+i[0].value || 0) * (+i[1].value || 0));
+      }, 0);
+      $('mdInSum').textContent = fmtB(tot);
+    };
+    const addMdLine = (l?: any) => {
+      if (!materials.length) {
+        toast('ยังไม่มีวัสดุในทะเบียน');
+        return;
+      }
+      const row = document.createElement('div');
+      row.className = 'ln';
+      row.innerHTML = isOut
+        ? '<select aria-label="วัสดุ"></select><input type="number" min="0" step="any" placeholder="จำนวน" aria-label="จำนวน"><span class="bal"></span><button type="button" class="btn small" aria-label="ลบบรรทัด">ลบ</button>'
+        : '<select aria-label="วัสดุ"></select><input type="number" min="0" step="any" placeholder="จำนวน" aria-label="จำนวน"><input type="number" min="0" step="any" placeholder="ราคา/หน่วย" aria-label="ราคาต่อหน่วย"><span class="tot">0.00</span><button type="button" class="btn small" aria-label="ลบบรรทัด">ลบ</button>';
+      const sel = row.querySelector('select') as HTMLSelectElement;
+      const ins = row.querySelectorAll('input');
+      fillSelect(sel, matOpts(false));
+      if (l) {
+        sel.value = l.mid;
+        ins[0].value = l.qty;
+        if (!isOut) ins[1].value = l.price ?? '';
+      } else if (!isOut) {
+        const last = lastPrice(sel.value);
+        if (last) ins[1].value = String(last);
+      }
+      const upd = () => {
+        if (!isOut) {
+          row.querySelector('.tot')!.textContent = fmtB(r2((+ins[0].value || 0) * (+ins[1].value || 0)));
+          sumMdIn();
+        } else {
+          const m = matById(sel.value);
+          const avail = r2(current(sel.value).q + oldQty(mv, sel.value));
+          const balEl = row.querySelector('.bal')!;
+          balEl.textContent = m ? 'เหลือ ' + fmtQ(avail) + ' ' + m.unit : '';
+          balEl.className = 'bal' + ((+ins[0].value || 0) > avail ? ' out' : '');
+        }
+      };
+      sel.addEventListener('change', () => {
+        if (!isOut && !ins[1].value) {
+          const p = lastPrice(sel.value);
+          if (p) ins[1].value = String(p);
+        }
+        upd();
+      });
+      ins.forEach((i) => i.addEventListener('input', upd));
+      row.querySelector('button')!.addEventListener('click', () => {
+        row.remove();
+        if (!isOut) sumMdIn();
+      });
+      mdLinesBox.appendChild(row);
+      upd();
+    };
+
+    (mv.lines || []).forEach((l: any) => addMdLine(l));
+    if (!(mv.lines || []).length && materials.length) addMdLine();
+
+    const syncMdSrc = () => {
+      if (isOut || !$('mdSrc')) return;
+      const opening = $('mdSrc').value === 'opening';
+      if ($('mdPoLbl')) $('mdPoLbl').hidden = opening;
+      if ($('mdInspectLbl')) $('mdInspectLbl').hidden = opening;
+      if ($('mdVendorReq')) $('mdVendorReq').hidden = opening;
+    };
+    syncMdSrc();
+    $('mdSrc')?.addEventListener('change', syncMdSrc);
+    $('mdAddLine')?.addEventListener('click', () => addMdLine());
+
+    footEl.innerHTML =
+      `<button type="button" class="btn danger" id="mdDelBtn">${isOut ? 'ลบใบเบิกนี้ (คืนคลัง)' : 'ลบใบรับนี้'}</button>` +
+      `<span class="sp"></span>` +
+      `<button type="button" class="btn" id="mdCancelBtn">${fromView ? 'กลับหน้ารายละเอียด' : 'ยกเลิก'}</button>` +
+      `<button type="button" class="btn primary" id="mdSaveBtn">บันทึกการแก้ไข</button>`;
+
+    $('mvDetailModal').hidden = false;
+  }
+
+  $('mvDetailFoot')?.addEventListener('click', async (e: Event) => {
+    const t = e.target as HTMLElement;
+    if (t.closest('[data-md-close]')) {
+      closeMoveDetail();
+      return;
+    }
+    const pr = t.closest('[data-md-prn]') as HTMLElement | null;
+    if (pr) {
+      const mv = moves.find((m) => m.id === pr.dataset.mdPrn);
+      closeMoveDetail();
+      if (mv) {
+        openPrint(mv);
+        doPrintSlip(true);
+      }
+      return;
+    }
+    const sl = t.closest('[data-md-slip]') as HTMLElement | null;
+    if (sl) {
+      const mv = moves.find((m) => m.id === sl.dataset.mdSlip);
+      if (mv) downloadSlip(mv);
+      return;
+    }
+    const ed = t.closest('[data-md-edit]') as HTMLElement | null;
+    if (ed) {
+      const mv = moves.find((m) => m.id === ed.dataset.mdEdit);
+      if (mv) openMoveEdit(mv, true);
+      return;
+    }
+    if (t.closest('#mdCancelBtn')) {
+      const mv = modalMvId ? moves.find((m) => m.id === modalMvId) : null;
+      if (modalOpenedFromView && mv) openMoveDetail(mv);
+      else closeMoveDetail();
+      return;
+    }
+    if (t.closest('#mdDelBtn')) {
+      const mv = modalMvId ? moves.find((m) => m.id === modalMvId) : null;
+      const delBtn = $('mdDelBtn');
+      if (!mv || !delBtn) return;
+      if (mv.kind === 'in') {
+        for (const l of mv.lines || []) {
+          if (r2(current(l.mid).q - oldQty(mv, l.mid)) < 0) {
+            const m = matById(l.mid);
+            return msg('mdEditMsg', `ลบไม่ได้: ${m?.name || 'วัสดุ'} ถูกเบิกไปแล้ว ยอดจะติดลบ ลบใบเบิกที่เกี่ยวข้องก่อน`, 1);
+          }
+        }
+        if (!confirmClick('delmdin', delBtn, 'กดอีกครั้งเพื่อลบใบรับ')) return;
+        try {
+          await db.doc('moves/' + mv.id).delete();
+          if (editIn === mv.id) resetIn(null);
+          toast('ลบใบรับ ' + mv.no + ' แล้ว');
+          closeMoveDetail();
+        } catch (err) {
+          msg('mdEditMsg', errText(err), 1);
+        }
+      } else {
+        if (!confirmClick('delmdout', delBtn, 'กดอีกครั้ง: ลบใบเบิกและคืนวัสดุเข้าคลัง')) return;
+        try {
+          await db.doc('moves/' + mv.id).delete();
+          if (editOut === mv.id) resetOut(null);
+          toast('ลบใบเบิก ' + mv.no + ' แล้ว วัสดุคืนเข้าคลัง');
+          closeMoveDetail();
+        } catch (err) {
+          msg('mdEditMsg', errText(err), 1);
+        }
+      }
+      return;
+    }
+    if (t.closest('#mdSaveBtn')) {
+      const mv = modalMvId ? moves.find((m) => m.id === modalMvId) : null;
+      if (!mv || !db) return;
+      const isOut = mv.kind === 'out';
+      const mdLinesBox = $('mdEditLines');
+      const lines = [...(mdLinesBox?.querySelectorAll('.ln') || [])]
+        .map((r: any) => {
+          const s = r.querySelector('select') as HTMLSelectElement;
+          const i = r.querySelectorAll('input');
+          const o: any = { mid: s.value, qty: +i[0].value || 0 };
+          if (!isOut) o.price = +i[1].value || 0;
+          return o;
+        })
+        .filter((l) => l.mid && l.qty > 0);
+      if (!lines.length) return msg('mdEditMsg', 'เพิ่มรายการวัสดุอย่างน้อย 1 รายการ และใส่จำนวน', 1);
+
+      const date = $('mdDate')?.value;
+      if (!date) return msg('mdEditMsg', 'ระบุวันที่เอกสาร', 1);
+      const n = parseNo($('mdNo')?.value, mv.kind, date);
+      if (moves.some((m) => m.kind === mv.kind && m.no === n.no && m.id !== mv.id)) {
+        return msg('mdEditMsg', `เลขที่เอกสาร ${n.no} ซ้ำกับใบที่มีอยู่แล้ว`, 1);
+      }
+
+      const now = new Date().toISOString();
+      let body: any;
+      if (!isOut) {
+        const src = $('mdSrc')?.value || 'purchase';
+        const opening = src === 'opening';
+        const vendor = ($('mdVendor')?.value || '').trim();
+        const inspectDate = opening ? '' : $('mdInspect')?.value || '';
+        if (!opening && !vendor) {
+          $('mdVendor')?.focus();
+          return msg('mdEditMsg', 'กรอกชื่อผู้ขาย / รับจาก', 1);
+        }
+        if (!opening && !inspectDate) {
+          $('mdInspect')?.focus();
+          return msg('mdEditMsg', 'กรอกวันที่ตรวจรับ', 1);
+        }
+        for (const l of mv.lines || []) {
+          const after = r2(
+            current(l.mid).q -
+              oldQty(mv, l.mid) +
+              lines.filter((x) => x.mid === l.mid).reduce((s, x) => s + x.qty, 0)
+          );
+          if (after < 0) {
+            const m = matById(l.mid);
+            return msg('mdEditMsg', `แก้ไม่ได้: ${m?.name || 'วัสดุ'} ถูกเบิกไปแล้ว ยอดจะติดลบ ${fmtQ(-after)} ${m?.unit || ''}`, 1);
+          }
+        }
+        body = {
+          kind: 'in',
+          no: n.no,
+          seq: n.seq,
+          fy: n.fy,
+          date,
+          src,
+          inspectDate,
+          poNo: ($('mdPo')?.value || '').trim(),
+          vendor,
+          invoiceNo: ($('mdInv')?.value || '').trim(),
+          note: ($('mdNote')?.value || '').trim(),
+          lines,
+          createdAt: mv.createdAt || now,
+          updatedAt: now,
+        };
+      } else {
+        const requester = ($('mdReq')?.value || '').trim();
+        const purpose = ($('mdPurpose')?.value || '').trim();
+        if (!requester) {
+          $('mdReq')?.focus();
+          return msg('mdEditMsg', 'กรอกชื่อผู้เบิก', 1);
+        }
+        if (!purpose) {
+          $('mdPurpose')?.focus();
+          return msg('mdEditMsg', 'กรอกวัตถุประสงค์เพื่อใช้ในงาน', 1);
+        }
+        const need: Record<string, number> = {};
+        lines.forEach((l) => (need[l.mid] = (need[l.mid] || 0) + l.qty));
+        for (const mid in need) {
+          const avail = r2(current(mid).q + oldQty(mv, mid));
+          if (need[mid] > avail + 1e-9) {
+            const m = matById(mid);
+            return msg('mdEditMsg', `${m?.name || 'วัสดุ'} คงเหลือ ${fmtQ(avail)} ${m?.unit || ''} ไม่พอเบิก ${fmtQ(need[mid])}`, 1);
+          }
+        }
+        body = {
+          kind: 'out',
+          no: n.no,
+          seq: n.seq,
+          fy: n.fy,
+          date,
+          requester,
+          reqPos: ($('mdPos')?.value || '').trim(),
+          purpose,
+          note: ($('mdNote')?.value || '').trim(),
+          lines,
+          createdAt: mv.createdAt || now,
+          updatedAt: now,
+        };
+      }
+
+      const saveBtn = $('mdSaveBtn');
+      if (saveBtn) saveBtn.disabled = true;
+      msg('mdEditMsg', 'กำลังบันทึก…');
+      try {
+        await db.doc('moves/' + mv.id).set(body);
+        if (!isOut && editIn === mv.id) resetIn(null);
+        if (isOut && editOut === mv.id) resetOut(null);
+        toast((isOut ? 'บันทึกการแก้ไขใบเบิก ' : 'บันทึกการแก้ไขใบรับ ') + n.no + ' แล้ว');
+        const updatedMv = moves.find((m) => m.id === mv.id) || { ...body, id: mv.id };
+        openMoveDetail(updatedMv);
+      } catch (err) {
+        msg('mdEditMsg', errText(err), 1);
+      } finally {
+        if (saveBtn) saveBtn.disabled = false;
+      }
+    }
+  });
+
   function renderIn() {
     if (!$('inLines').querySelector('.ln') && !editIn && materials.length) addLine('in');
     if (!editIn) {
@@ -1129,7 +1607,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     }
     const q = $('inQ').value.trim().toLowerCase(),
       fy = $('inFy').value;
-      const rows = moves
+    const rows = moves
       .filter((m) => m.kind === 'in' && (fy === 'all' || String(m.fy || fyOf(m.date)) === fy))
       .filter(
         (m) =>
@@ -1139,12 +1617,20 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       .sort((a, b) => mvSort(b, a));
     $('inRows').innerHTML = rows
       .map(
-        (m) => `<tr><td class="no">${esc(m.no)}</td><td style="white-space:nowrap">${esc(thDate(m.date))}</td>
-    <td>${esc(m.vendor || '—')}<div class="sub">${esc(SRC[m.src] || '')}${
+        (m) => `<tr><td class="no col-no">${esc(m.no)}</td><td class="col-date">${esc(thDate(m.date))}</td>
+    <td class="col-party">${esc(m.vendor || '—')}<div class="sub">${esc(SRC[m.src] || '')}${
           m.invoiceNo ? ' · ใบส่งของ ' + esc(m.invoiceNo) : ''
-        }</div></td><td>${esc(m.poNo || '')}</td>
-    <td style="min-width:200px">${esc(linesText(m))}</td><td class="num">${fmtB(moveValue(m))}</td>
-    <td><button class="btn small" data-edin="${esc(m.id)}">${canWrite ? 'แก้ไข' : 'ดู'}</button></td></tr>`
+        }</div></td><td class="col-po">${esc(m.poNo || '—')}</td>
+    <td class="num col-val">${fmtB(moveValue(m))}</td>
+    <td class="col-act"><div class="rowact-stack cols-1"><button type="button" class="btn icon-btn" data-viewmv="${esc(
+      m.id
+    )}" title="ดูรายละเอียดทั้งหมด" aria-label="ดูข้อมูล">${ICO_EYE}</button>${
+          canWrite
+            ? `<button type="button" class="btn icon-btn" data-edin="${esc(
+                m.id
+              )}" title="แก้ไขในหน้ารายละเอียด" aria-label="แก้ไข">${ICO_EDIT}</button>`
+            : ''
+        }</div></td></tr>`
       )
       .join('');
     const em = $('emptyIn');
@@ -1169,10 +1655,14 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     renderIn();
   });
   $('inRows')?.addEventListener('click', (e: Event) => {
+    const v = (e.target as HTMLElement).closest('[data-viewmv]') as HTMLElement | null;
+    if (v) {
+      openMoveDetail(moves.find((m) => m.id === v.dataset.viewmv));
+      return;
+    }
     const b = (e.target as HTMLElement).closest('[data-edin]') as HTMLElement | null;
     if (b) {
-      resetIn(moves.find((m) => m.id === b.dataset.edin));
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      openMoveEdit(moves.find((m) => m.id === b.dataset.edin), false);
     }
   });
 
@@ -1295,16 +1785,24 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       .sort((a, b) => mvSort(b, a));
     $('outRows').innerHTML = rows
       .map(
-        (m) => `<tr><td class="no">${esc(m.no)}</td><td style="white-space:nowrap">${esc(thDate(m.date))}</td>
-    <td>${esc(m.requester)}${m.reqPos ? `<div class="sub">${esc(m.reqPos)}</div>` : ''}</td><td style="min-width:180px">${esc(
-          m.purpose
+        (m) => `<tr><td class="no col-no">${esc(m.no)}</td><td class="col-date">${esc(thDate(m.date))}</td>
+    <td class="col-party">${esc(m.requester)}${m.reqPos ? `<div class="sub">${esc(m.reqPos)}</div>` : ''}</td><td class="col-work">${esc(
+          m.purpose || '—'
         )}</td>
-    <td style="min-width:180px">${esc(linesText(m))}</td><td class="num">${fmtB(moveValue(m))}</td>
-    <td><div class="rowact"><button class="btn small primary" data-prn="${esc(
+    <td class="num col-val">${fmtB(moveValue(m))}</td>
+    <td class="col-act"><div class="rowact-stack cols-2"><button type="button" class="btn icon-btn" data-viewmv="${esc(
       m.id
-    )}">พิมพ์</button><button class="btn small" data-slip="${esc(m.id)}">Word</button><button class="btn small" data-edout="${esc(
+    )}" title="ดูรายละเอียดทั้งหมด" aria-label="ดูข้อมูล">${ICO_EYE}</button><button type="button" class="btn icon-btn primary" data-prn="${esc(
           m.id
-        )}">${canWrite ? 'แก้ไข' : 'ดู'}</button></div></td></tr>`
+        )}" title="พิมพ์ใบเบิก" aria-label="พิมพ์">${ICO_PRINT}</button><button type="button" class="btn icon-btn" data-slip="${esc(
+          m.id
+        )}" title="ดาวน์โหลดไฟล์ Word (.docx)" aria-label="ดาวน์โหลด Word">${ICO_WORD}</button>${
+          canWrite
+            ? `<button type="button" class="btn icon-btn" data-edout="${esc(
+                m.id
+              )}" title="แก้ไขในหน้ารายละเอียด" aria-label="แก้ไข">${ICO_EDIT}</button>`
+            : ''
+        }</div></td></tr>`
       )
       .join('');
     const em = $('emptyOut');
@@ -1329,6 +1827,11 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     renderOut();
   });
   $('outRows')?.addEventListener('click', (e: Event) => {
+    const v = (e.target as HTMLElement).closest('[data-viewmv]') as HTMLElement | null;
+    if (v) {
+      openMoveDetail(moves.find((m) => m.id === v.dataset.viewmv));
+      return;
+    }
     const pr = (e.target as HTMLElement).closest('[data-prn]') as HTMLElement | null;
     if (pr) {
       openPrint(moves.find((m) => m.id === pr.dataset.prn));
@@ -1342,8 +1845,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     }
     const b = (e.target as HTMLElement).closest('[data-edout]') as HTMLElement | null;
     if (b) {
-      resetOut(moves.find((m) => m.id === b.dataset.edout));
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      openMoveEdit(moves.find((m) => m.id === b.dataset.edout), false);
     }
   });
 

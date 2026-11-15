@@ -718,16 +718,15 @@ export default function App() {
                   </div>
                 </div>
                 <div className="tablebox">
-                  <table>
+                  <table className="hist-table hist-in">
                     <thead>
                       <tr>
-                        <th>เลขที่</th>
-                        <th>วันที่รับ</th>
-                        <th>ที่มา / ผู้ขาย</th>
-                        <th>ใบสั่งซื้อ</th>
-                        <th>รายการ</th>
-                        <th className="num">มูลค่า (บาท)</th>
-                        <th></th>
+                        <th className="col-no">เลขที่</th>
+                        <th className="col-date">วันที่รับ</th>
+                        <th className="col-party">ที่มา / ผู้ขาย</th>
+                        <th className="col-po">ใบสั่งซื้อ</th>
+                        <th className="num col-val">มูลค่า (บาท)</th>
+                        <th className="act-col col-act">จัดการ</th>
                       </tr>
                     </thead>
                     <tbody id="inRows"></tbody>
@@ -825,16 +824,15 @@ export default function App() {
                   </div>
                 </div>
                 <div className="tablebox">
-                  <table>
+                  <table className="hist-table hist-out">
                     <thead>
                       <tr>
-                        <th>เลขที่</th>
-                        <th>วันที่</th>
-                        <th>ผู้เบิก</th>
-                        <th>เพื่อใช้ในงาน</th>
-                        <th>รายการ</th>
-                        <th className="num">มูลค่า (บาท)</th>
-                        <th></th>
+                        <th className="col-no">เลขที่</th>
+                        <th className="col-date">วันที่</th>
+                        <th className="col-party">ผู้เบิก</th>
+                        <th className="col-work">เพื่อใช้ในงาน</th>
+                        <th className="num col-val">มูลค่า (บาท)</th>
+                        <th className="act-col col-act">จัดการ</th>
                       </tr>
                     </thead>
                     <tbody id="outRows"></tbody>
@@ -1652,6 +1650,23 @@ export default function App() {
             </div>
             <div className="fy-manage-list" id="fyManageList"></div>
           </div>
+        </div>
+      </div>
+
+      {/* Move Detail Modal (ใบรับวัสดุ / ใบเบิกวัสดุ) */}
+      <div className="modal" id="mvDetailModal" hidden role="dialog" aria-modal="true" aria-labelledby="mvDetailTitle">
+        <div className="mv-detail-box">
+          <div className="mv-detail-head">
+            <div>
+              <h3 id="mvDetailTitle">รายละเอียดเอกสาร</h3>
+              <div className="sub" id="mvDetailSub"></div>
+            </div>
+            <button type="button" className="btn small" id="mvDetailClose">
+              ปิดหน้าต่าง
+            </button>
+          </div>
+          <div className="mv-detail-body" id="mvDetailBody"></div>
+          <div className="mv-detail-foot" id="mvDetailFoot"></div>
         </div>
       </div>
     </div>
