@@ -52,16 +52,18 @@ export default function App() {
     }
   });
 
-  useEffect(() => {
-    bootKumWatsaduApp((cnt) => setMaterialCount(cnt));
-  }, []);
+  const [hasFolderBackup, setHasFolderBackup] = useState<boolean>(false);
 
   useEffect(() => {
-    const syncLastBackup = () => {
+    const syncLastBackup = (ev?: Event) => {
       try {
         setLastBackupRaw(localStorage.getItem('kumwatsadu-db-v1:lastBackup'));
       } catch {
         setLastBackupRaw(null);
+      }
+      const detail = (ev as CustomEvent | undefined)?.detail;
+      if (detail && typeof detail === 'object' && 'hasFolderBackup' in detail) {
+        setHasFolderBackup(Boolean(detail.hasFolderBackup));
       }
     };
     const onStorage = (e: StorageEvent) => {
@@ -73,6 +75,10 @@ export default function App() {
       window.removeEventListener('storage', onStorage);
       window.removeEventListener('kumwatsadu-lastbackup-change', syncLastBackup);
     };
+  }, []);
+
+  useEffect(() => {
+    bootKumWatsaduApp((cnt) => setMaterialCount(cnt));
   }, []);
 
   const lastBackupLabel = formatLastBackupDate(lastBackupRaw);
@@ -430,6 +436,8 @@ export default function App() {
               </button>
               <button
                 type="button"
+                id="topbarStoragePill"
+                hidden={hasFolderBackup}
                 onClick={() => switchTab('set')}
                 className="storage-pill"
                 title="คลิกเพื่อตั้งค่าการสำรองข้อมูล"
