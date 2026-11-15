@@ -1,24 +1,28 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Monitor,
   CheckCircle2,
   Database,
   Sparkles,
   FolderCheck,
+  Trash2,
 } from 'lucide-react';
 import { usePWAInstall, useOnlineStatus } from './usePWAInstall';
 
 interface InstallAndPortableProps {
   onLoadSampleData?: () => void;
+  onClearSampleData?: () => void;
   hasMaterials?: boolean;
 }
 
 export const InstallAndPortableSection: React.FC<InstallAndPortableProps> = ({
   onLoadSampleData,
+  onClearSampleData,
   hasMaterials,
 }) => {
   const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
   const isOnline = useOnlineStatus();
+  const [confirmClear, setConfirmClear] = useState<boolean>(false);
 
   return (
     <div className="stack">
@@ -131,18 +135,57 @@ export const InstallAndPortableSection: React.FC<InstallAndPortableProps> = ({
           </div>
           <p className="hint">
             {hasMaterials
-              ? 'ขณะนี้มีรายการวัสดุอยู่ในระบบแล้ว หากกดปุ่มด้านล่าง ระบบจะเพิ่มหรืออัปเดตเฉพาะรายการตัวอย่างโดยไม่ลบรายการอื่นที่คุณบันทึกไว้'
+              ? 'ขณะนี้มีรายการวัสดุอยู่ในระบบแล้ว สามารถกดโหลดซ้ำเพื่ออัปเดตเฉพาะรายการตัวอย่าง หรือกดล้างข้อมูลตัวอย่างออกโดยไม่กระทบข้อมูลจริงที่คุณบันทึกไว้'
               : 'ยังไม่มีรายการวัสดุในเครื่อง สามารถกดปุ่มด้านล่างเพื่อเพิ่มข้อมูลตัวอย่างสำหรับทดลองใช้งานได้ทันที'}
           </p>
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
-              onClick={onLoadSampleData}
+              onClick={() => {
+                setConfirmClear(false);
+                onLoadSampleData();
+              }}
               className="btn flex items-center gap-2"
             >
               <FolderCheck className="h-4 w-4 text-[var(--ink)]" />
               <span>โหลดข้อมูลตัวอย่างทดลองใช้</span>
             </button>
+
+            {onClearSampleData && !confirmClear && (
+              <button
+                type="button"
+                onClick={() => setConfirmClear(true)}
+                className="btn danger flex items-center gap-2"
+              >
+                <Trash2 className="h-4 w-4" />
+                <span>ล้างข้อมูลตัวอย่าง</span>
+              </button>
+            )}
+
+            {onClearSampleData && confirmClear && (
+              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-1.5">
+                <span className="text-sm font-semibold text-red-800">
+                  ยืนยันการลบเฉพาะข้อมูลตัวอย่างหรือไม่?
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfirmClear(false);
+                    onClearSampleData();
+                  }}
+                  className="btn danger small"
+                >
+                  ยืนยันล้างข้อมูลตัวอย่าง
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmClear(false)}
+                  className="btn small"
+                >
+                  ยกเลิก
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

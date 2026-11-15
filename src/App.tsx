@@ -432,6 +432,31 @@ function KumWatsaduWorkspace({
     (window as any).toast?.('โหลดข้อมูลตัวอย่างเรียบร้อยแล้ว (วัสดุ 5 รายการ, ใบรับ 2 ใบ, ใบเบิก 1 ใบ)');
   };
 
+  const handleClearSampleData = async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = (window as any).localDb;
+    if (!db) return;
+
+    const sampleMatIds = [
+      'mat_sample_1',
+      'mat_sample_2',
+      'mat_sample_3',
+      'mat_sample_4',
+      'mat_sample_5',
+    ];
+    const sampleMoveIds = ['mv_sample_open', 'mv_sample_in2', 'mv_sample_out1'];
+
+    for (const id of sampleMoveIds) {
+      await db.doc('moves/' + id).delete();
+    }
+    for (const id of sampleMatIds) {
+      await db.doc('materials/' + id).delete();
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).toast?.('ล้างข้อมูลตัวอย่างเรียบร้อยแล้ว');
+  };
+
   return (
     <div className="kumwatsadu-root">
       <div className="app-shell">
@@ -1688,6 +1713,7 @@ function KumWatsaduWorkspace({
           <section id="view-install" hidden>
             <InstallAndPortableSection
               onLoadSampleData={handleLoadSampleData}
+              onClearSampleData={handleClearSampleData}
               hasMaterials={materialCount > 0}
             />
           </section>

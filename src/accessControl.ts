@@ -34,7 +34,14 @@ const LICENSE_CACHE_STORAGE_KEY = 'kumwatsadu-license-cache-v1';
 const LICENSE_IDB_NAME = 'kumwatsadu-license-idb';
 const LICENSE_IDB_STORE = 'kv';
 
-const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+const runtimeFirebaseConfig = {
+  ...firebaseConfig,
+  authDomain:
+    (import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string | undefined)?.trim() ||
+    firebaseConfig.authDomain,
+};
+
+const app = getApps().length ? getApp() : initializeApp(runtimeFirebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 

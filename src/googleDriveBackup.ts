@@ -5,7 +5,14 @@ import firebaseConfig from '../firebase-applet-config.json';
 export const SCOPES = ['https://www.googleapis.com/auth/drive.file'] as const;
 export const DRIVE_BACKUP_FOLDER_NAME = 'KumWatsadu Backups';
 
-const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+const runtimeFirebaseConfig = {
+  ...firebaseConfig,
+  authDomain:
+    (import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string | undefined)?.trim() ||
+    firebaseConfig.authDomain,
+};
+
+const app = getApps().length ? getApp() : initializeApp(runtimeFirebaseConfig);
 const auth = getAuth(app);
 
 const provider = new GoogleAuthProvider();
