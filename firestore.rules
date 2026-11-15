@@ -1,0 +1,152 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isVerified() && (
+        request.auth.token.email == 'farsaicra@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidDeviceId(devId) {
+      return devId is string && devId.size() >= 8 && devId.size() <= 80 && devId.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidApprovedDeviceList(listVal, maxDev) {
+      return listVal is list
+        && listVal.size() <= maxDev
+        && listVal.size() <= 5
+        && (listVal.size() == 0 || isValidDeviceId(listVal[0]))
+        && (listVal.size() <= 1 || isValidDeviceId(listVal[1]))
+        && (listVal.size() <= 2 || isValidDeviceId(listVal[2]))
+        && (listVal.size() <= 3 || isValidDeviceId(listVal[3]))
+        && (listVal.size() <= 4 || isValidDeviceId(listVal[4]));
+    }
+
+    function isValidAccessRequest(data, userId) {
+      return data.keys().hasAll([
+          'uid', 'email', 'fullName', 'orgName', 'position', 'phone', 'note',
+          'status', 'maxDevices', 'pendingDeviceId', 'pendingDeviceLabel',
+          'approvedDeviceIds', 'approvedDeviceLabels', 'expiresAt',
+          'reviewedBy', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'email', 'fullName', 'orgName', 'position', 'phone', 'note',
+          'status', 'maxDevices', 'pendingDeviceId', 'pendingDeviceLabel',
+          'approvedDeviceIds', 'approvedDeviceLabels', 'expiresAt',
+          'reviewedBy', 'reviewedAt', 'createdAt', 'updatedAt'
+        ])
+        && data.uid is string && data.uid == userId && isValidId(data.uid)
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 120
+        && data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 120
+        && data.orgName is string && data.orgName.size() >= 2 && data.orgName.size() <= 180
+        && data.position is string && data.position.size() <= 120
+        && data.phone is string && data.phone.size() <= 40
+        && data.note is string && data.note.size() <= 300
+        && data.status in ['pending', 'approved', 'rejected', 'revoked']
+        && data.maxDevices is int && data.maxDevices >= 1 && data.maxDevices <= 5
+        && data.pendingDeviceId is string
+        && (data.pendingDeviceId == '' || isValidDeviceId(data.pendingDeviceId))
+        && data.pendingDeviceLabel is string && data.pendingDeviceLabel.size() <= 120
+        && isValidApprovedDeviceList(data.approvedDeviceIds, data.maxDevices)
+        && data.approvedDeviceLabels is string && data.approvedDeviceLabels.size() <= 300
+        && data.expiresAt is string && data.expiresAt.size() <= 40
+        && data.reviewedBy is string && data.reviewedBy.size() <= 120
+        && (!('reviewedAt' in data) || data.reviewedAt == null || data.reviewedAt is timestamp)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    match /access_requests/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+
+      allow create: if isVerified()
+        && isValidId(userId)
+        && isOwner(userId)
+        && isValidAccessRequest(incoming(), userId)
+        && incoming().email == request.auth.token.email
+        && incoming().status == 'pending'
+        && incoming().maxDevices == 2
+        && isValidDeviceId(incoming().pendingDeviceId)
+        && incoming().approvedDeviceIds.size() == 0
+        && incoming().approvedDeviceLabels == ''
+        && incoming().expiresAt == ''
+        && incoming().reviewedBy == ''
+        && !('reviewedAt' in incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isVerified()
+        && isValidId(userId)
+        && isValidAccessRequest(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().email == existing().email
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (
+            isAdmin()
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'status', 'maxDevices', 'pendingDeviceId', 'pendingDeviceLabel',
+              'approvedDeviceIds', 'approvedDeviceLabels', 'expiresAt',
+              'reviewedBy', 'reviewedAt', 'note', 'updatedAt'
+            ])
+            && incoming().reviewedBy == request.auth.token.email
+            && incoming().reviewedAt == request.time
+          ) || (
+            isOwner(userId)
+            && existing().status in ['pending', 'rejected']
+            && incoming().status == 'pending'
+            && isValidDeviceId(incoming().pendingDeviceId)
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'fullName', 'orgName', 'position', 'phone', 'note',
+              'pendingDeviceId', 'pendingDeviceLabel', 'status', 'updatedAt'
+            ])
+          ) || (
+            isOwner(userId)
+            && existing().status == 'approved'
+            && isValidDeviceId(incoming().pendingDeviceId)
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'pendingDeviceId', 'pendingDeviceLabel', 'note', 'updatedAt'
+            ])
+          )
+        );
+
+      allow delete: if isValidId(userId) && isAdmin();
+    }
+
+    match /admins/{userId} {
+      allow get: if isValidId(userId) && isAdmin();
+      allow list, create, update, delete: if false;
+    }
+  }
+}

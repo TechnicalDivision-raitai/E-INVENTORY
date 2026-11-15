@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { User } from 'firebase/auth';
 import {
   Boxes,
   PackagePlus,
@@ -24,10 +25,35 @@ import {
   RefreshCw,
   Menu,
   X,
+  ShieldCheck,
+  LogOut,
 } from 'lucide-react';
 import { bootKumWatsaduApp } from './kumwatsaduController';
 import { InstallAndPortableSection } from './PWAInstallButton';
 import { GoogleDriveBackupPanel } from './GoogleDriveBackupPanel';
+import { AccessGate, GateReason } from './AccessGate';
+import { AdminAccessModal } from './AdminAccessModal';
+import {
+  AccessRegistrationForm,
+  AccessRequestDoc,
+  clearLocalLicenseCache,
+  DEFAULT_MAX_DEVICES,
+  fetchMyAccessRequest,
+  getDeviceLabel,
+  getOrCreateDeviceId,
+  isLicenseDateExpired,
+  isOfflineError,
+  isOwnerAdminUser,
+  OFFLINE_GRACE_DAYS,
+  requestDeviceBinding,
+  saveLocalLicenseCache,
+  signInWithGoogleForAccess,
+  signOutFromAccess,
+  submitAccessRequest,
+  subscribeAllAccessRequests,
+  subscribeAuthState,
+  verifyLocalLicenseCache,
+} from './accessControl';
 
 const TH_MONTHS_SHORT = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
 
@@ -70,7 +96,31 @@ function formatLastBackupDateTime(rawDate: string | null, rawAt: string | null):
   return val;
 }
 
-export default function App() {
+interface WorkspaceProps {
+  user: User | null;
+  isAdmin: boolean;
+  deviceId: string;
+  deviceLabel: string;
+  offlineDaysRemaining: number;
+  accessDoc: AccessRequestDoc | null;
+  pendingAdminCount: number;
+  onOpenAdmin: () => void;
+  onRecheckAccess: () => Promise<void>;
+  onSignOutAccess: () => Promise<void>;
+}
+
+function KumWatsaduWorkspace({
+  user,
+  isAdmin,
+  deviceId,
+  deviceLabel,
+  offlineDaysRemaining,
+  accessDoc,
+  pendingAdminCount,
+  onOpenAdmin,
+  onRecheckAccess,
+  onSignOutAccess,
+}: WorkspaceProps) {
   const [materialCount, setMaterialCount] = useState<number>(0);
   const [lastBackupRaw, setLastBackupRaw] = useState<string | null>(() => {
     try {
@@ -551,6 +601,20 @@ export default function App() {
                 <HardDrive className="h-3.5 w-3.5" />
                 <span>จัดเก็บในเบราว์เซอร์</span>
               </button>
+              {isAdmin && (
+                <button
+                  type="button"
+                  className="topbar-admin-btn"
+                  onClick={onOpenAdmin}
+                  title="จัดการคำขอสิทธิ์และเครื่องที่ลงทะเบียน"
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  <span>อนุมัติสิทธิ์ใช้งาน</span>
+                  {pendingAdminCount > 0 && (
+                    <span className="topbar-admin-badge">{pendingAdminCount}</span>
+                  )}
+                </button>
+              )}
               <div className="topbar-fy-group">
                 <select
                   id="topFySelect"
@@ -571,8 +635,8 @@ export default function App() {
               <span className="topbar-role" id="fyStamp" hidden>
                 ปีงบประมาณ —
               </span>
-              <div className="topbar-avatar" title="เจ้าหน้าที่พัสดุ">
-                พ
+              <div className="topbar-avatar" title={user?.email || 'ผู้ใช้งาน'}>
+                {(user?.displayName || user?.email || 'พ').charAt(0).toUpperCase()}
               </div>
             </div>
           </div>
@@ -1555,6 +1619,68 @@ export default function App() {
                   <GoogleDriveBackupPanel />
                 </div>
               </div>
+
+              <div className="card">
+                <div className="cardhead">
+                  <div>
+                    <h3>สิทธิ์การเข้าใช้งานและการลงทะเบียนเครื่อง</h3>
+                    <span className="sub">
+                      ควบคุมสิทธิ์ผ่านฐานข้อมูลกลาง (จำกัด {accessDoc?.maxDevices || DEFAULT_MAX_DEVICES} เครื่องต่อบัญชี · ยืนยันออนไลน์ทุก{' '}
+                      {OFFLINE_GRACE_DAYS} วัน)
+                    </span>
+                  </div>
+                </div>
+                <div className="license-status-grid">
+                  <div className="license-kv">
+                    <span>บัญชีที่ยืนยันสิทธิ์</span>
+                    <strong>{user?.email || accessDoc?.email || 'ยืนยันในเครื่องนี้'}</strong>
+                  </div>
+                  <div className="license-kv">
+                    <span>สถานะสิทธิ์</span>
+                    <strong>{isAdmin ? 'เจ้าของระบบ (Admin)' : 'อนุมัติใช้งานแล้ว'}</strong>
+                  </div>
+                  <div className="license-kv">
+                    <span>อุปกรณ์นี้</span>
+                    <strong>
+                      {deviceLabel} (<code>{deviceId}</code>)
+                    </strong>
+                  </div>
+                  <div className="license-kv">
+                    <span>โควต้าเครื่อง / รอบตรวจสอบออนไลน์</span>
+                    <strong>
+                      {isAdmin
+                        ? 'ไม่จำกัด (เจ้าของระบบ)'
+                        : `${accessDoc?.approvedDeviceIds?.length || 1} / ${
+                            accessDoc?.maxDevices || DEFAULT_MAX_DEVICES
+                          } เครื่อง · ออฟไลน์ได้อีก ${offlineDaysRemaining} วัน`}
+                    </strong>
+                  </div>
+                </div>
+                <div className="repbar" style={{ marginTop: 12, marginBottom: 0 }}>
+                  <button type="button" className="btn" onClick={() => void onRecheckAccess()}>
+                    <RefreshCw className="h-4 w-4" />
+                    <span>ตรวจสอบสิทธิ์ล่าสุดตอนนี้</span>
+                  </button>
+                  {isAdmin && (
+                    <button type="button" className="btn primary" onClick={onOpenAdmin}>
+                      <ShieldCheck className="h-4 w-4" />
+                      <span>
+                        จัดการคำขออนุมัติสิทธิ์
+                        {pendingAdminCount > 0 ? ` (${pendingAdminCount} รอดำเนินการ)` : ''}
+                      </span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn danger"
+                    style={{ marginLeft: 'auto' }}
+                    onClick={() => void onSignOutAccess()}
+                  >
+                    <LogOut className="h-4 w-4" />
+                    <span>ออกจากระบบสิทธิ์ใช้งาน</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </section>
 
@@ -1792,5 +1918,356 @@ export default function App() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+export default function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState<boolean>(false);
+  const [deviceId, setDeviceId] = useState<string>('');
+  const [deviceLabel, setDeviceLabel] = useState<string>(() => getDeviceLabel());
+  const [gateReason, setGateReason] = useState<GateReason>('loading');
+  const [authorized, setAuthorized] = useState<boolean>(false);
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [accessDoc, setAccessDoc] = useState<AccessRequestDoc | null>(null);
+  const [offlineDaysRemaining, setOfflineDaysRemaining] = useState<number>(OFFLINE_GRACE_DAYS);
+  const [busy, setBusy] = useState<boolean>(false);
+  const [errorMsg, setErrorMsg] = useState<string>('');
+  const [adminModalOpen, setAdminModalOpen] = useState<boolean>(false);
+  const [adminRequests, setAdminRequests] = useState<AccessRequestDoc[]>([]);
+  const [adminLoading, setAdminLoading] = useState<boolean>(false);
+  const [adminError, setAdminError] = useState<string>('');
+
+  const wasAuthorizedRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    void getOrCreateDeviceId().then((id) => {
+      setDeviceId(id);
+      setDeviceLabel(getDeviceLabel());
+    });
+  }, []);
+
+  useEffect(() => {
+    const unsub = subscribeAuthState((u) => {
+      setUser(u);
+      setAuthReady(true);
+    });
+    return unsub;
+  }, []);
+
+  const evaluateAccess = useCallback(
+    async (silent = false) => {
+      if (!authReady || !deviceId) return;
+      if (!silent) {
+        setErrorMsg('');
+      }
+
+      if (!user) {
+        const localCheck = await verifyLocalLicenseCache(deviceId, null);
+        if (!navigator.onLine && localCheck.valid && localCheck.cache) {
+          setIsAdmin(localCheck.cache.isAdmin);
+          setOfflineDaysRemaining(localCheck.daysRemaining);
+          setAuthorized(true);
+          wasAuthorizedRef.current = true;
+          return;
+        }
+        setAuthorized(false);
+        setIsAdmin(false);
+        setAccessDoc(null);
+        setGateReason(localCheck.expired30Days && !navigator.onLine ? 'offline_30d_expired' : 'unauthenticated');
+        if (wasAuthorizedRef.current) {
+          window.location.reload();
+        }
+        return;
+      }
+
+      if (isOwnerAdminUser(user)) {
+        await saveLocalLicenseCache({
+          uid: user.uid,
+          email: user.email || '',
+          fullName: user.displayName || 'เจ้าของระบบ',
+          orgName: 'ผู้ดูแลระบบ',
+          isAdmin: true,
+          deviceId,
+          approvedDeviceIds: [deviceId],
+          approvedDeviceLabels: deviceLabel,
+          maxDevices: 99,
+          expiresAt: '',
+        });
+        setIsAdmin(true);
+        setOfflineDaysRemaining(OFFLINE_GRACE_DAYS);
+        setAuthorized(true);
+        wasAuthorizedRef.current = true;
+        return;
+      }
+
+      if (!user.emailVerified) {
+        await clearLocalLicenseCache();
+        setIsAdmin(false);
+        setAuthorized(false);
+        setGateReason('unverified_email');
+        if (wasAuthorizedRef.current) {
+          window.location.reload();
+        }
+        return;
+      }
+
+      const localCheck = await verifyLocalLicenseCache(deviceId, user);
+      if (localCheck.valid && localCheck.cache && !silent) {
+        setIsAdmin(false);
+        setOfflineDaysRemaining(localCheck.daysRemaining);
+        setAuthorized(true);
+        wasAuthorizedRef.current = true;
+      }
+
+      try {
+        const docData = await fetchMyAccessRequest(user.uid);
+        setAccessDoc(docData);
+
+        if (!docData) {
+          await clearLocalLicenseCache();
+          setAuthorized(false);
+          setGateReason('needs_registration');
+          if (wasAuthorizedRef.current) window.location.reload();
+          return;
+        }
+
+        if (docData.status === 'pending') {
+          await clearLocalLicenseCache();
+          setAuthorized(false);
+          setGateReason('pending');
+          if (wasAuthorizedRef.current) window.location.reload();
+          return;
+        }
+
+        if (docData.status === 'rejected') {
+          await clearLocalLicenseCache();
+          setAuthorized(false);
+          setGateReason('rejected');
+          if (wasAuthorizedRef.current) window.location.reload();
+          return;
+        }
+
+        if (docData.status === 'revoked') {
+          await clearLocalLicenseCache();
+          setAuthorized(false);
+          setGateReason('revoked');
+          if (wasAuthorizedRef.current) window.location.reload();
+          return;
+        }
+
+        if (docData.status === 'approved') {
+          if (isLicenseDateExpired(docData.expiresAt)) {
+            await clearLocalLicenseCache();
+            setAuthorized(false);
+            setGateReason('expired');
+            if (wasAuthorizedRef.current) window.location.reload();
+            return;
+          }
+
+          const bound = docData.approvedDeviceIds || [];
+          const maxDev = docData.maxDevices || DEFAULT_MAX_DEVICES;
+          if (bound.includes(deviceId)) {
+            await saveLocalLicenseCache({
+              uid: docData.uid,
+              email: docData.email,
+              fullName: docData.fullName,
+              orgName: docData.orgName,
+              isAdmin: false,
+              deviceId,
+              approvedDeviceIds: bound,
+              approvedDeviceLabels: docData.approvedDeviceLabels || '',
+              maxDevices: maxDev,
+              expiresAt: docData.expiresAt || '',
+            });
+            setOfflineDaysRemaining(OFFLINE_GRACE_DAYS);
+            setAuthorized(true);
+            wasAuthorizedRef.current = true;
+            return;
+          }
+
+          await clearLocalLicenseCache();
+          setAuthorized(false);
+          setGateReason(bound.length >= maxDev ? 'device_limit_reached' : 'device_unbound');
+          if (wasAuthorizedRef.current) window.location.reload();
+          return;
+        }
+      } catch (err) {
+        if (isOfflineError(err)) {
+          if (localCheck.valid && localCheck.cache) {
+            setOfflineDaysRemaining(localCheck.daysRemaining);
+            setAuthorized(true);
+            wasAuthorizedRef.current = true;
+            return;
+          }
+          setAuthorized(false);
+          if (localCheck.expiredLicense) setGateReason('expired');
+          else if (localCheck.expired30Days) setGateReason('offline_30d_expired');
+          else setGateReason('offline_no_cache');
+          if (wasAuthorizedRef.current) window.location.reload();
+          return;
+        }
+        if (!silent) {
+          setErrorMsg(err instanceof Error ? err.message : 'ไม่สามารถตรวจสอบสิทธิ์ได้');
+        }
+        if (!localCheck.valid) {
+          setAuthorized(false);
+          setGateReason('needs_registration');
+        }
+      }
+    },
+    [authReady, deviceId, deviceLabel, user]
+  );
+
+  useEffect(() => {
+    void evaluateAccess(false);
+  }, [evaluateAccess]);
+
+  useEffect(() => {
+    if (!authorized) return;
+    const onOnline = () => void evaluateAccess(true);
+    const onFocus = () => {
+      if (navigator.onLine) void evaluateAccess(true);
+    };
+    window.addEventListener('online', onOnline);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [authorized, evaluateAccess]);
+
+  useEffect(() => {
+    if (!authorized || !isAdmin) {
+      setAdminRequests([]);
+      return;
+    }
+    setAdminLoading(true);
+    setAdminError('');
+    const unsub = subscribeAllAccessRequests(
+      (list) => {
+        setAdminRequests(list);
+        setAdminLoading(false);
+      },
+      (err) => {
+        setAdminError(err.message);
+        setAdminLoading(false);
+      }
+    );
+    return unsub;
+  }, [authorized, isAdmin]);
+
+  const pendingAdminCount = adminRequests.filter(
+    (r) => r.status === 'pending' || Boolean(r.pendingDeviceId)
+  ).length;
+
+  const handleSignIn = async () => {
+    setBusy(true);
+    setErrorMsg('');
+    try {
+      await signInWithGoogleForAccess();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'เข้าสู่ระบบไม่สำเร็จ';
+      if (!msg.includes('popup-closed-by-user')) {
+        setErrorMsg(msg);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    setBusy(true);
+    setErrorMsg('');
+    try {
+      await signOutFromAccess();
+      setAuthorized(false);
+      setIsAdmin(false);
+      setAccessDoc(null);
+      setGateReason('unauthenticated');
+      if (wasAuthorizedRef.current) {
+        window.location.reload();
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleSubmitRegistration = async (form: AccessRegistrationForm) => {
+    if (!user || !deviceId) return;
+    setBusy(true);
+    setErrorMsg('');
+    try {
+      const updated = await submitAccessRequest(user, form, deviceId, deviceLabel, accessDoc);
+      setAccessDoc(updated);
+      setGateReason('pending');
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'ส่งคำขอไม่สำเร็จ');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRequestDeviceBind = async (note: string) => {
+    if (!user || !deviceId) return;
+    setBusy(true);
+    setErrorMsg('');
+    try {
+      const updated = await requestDeviceBinding(user, deviceId, deviceLabel, note);
+      setAccessDoc(updated);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'ส่งคำขอเพิ่มเครื่องไม่สำเร็จ');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!authorized) {
+    return (
+      <AccessGate
+        reason={!authReady || !deviceId ? 'loading' : gateReason}
+        user={user}
+        deviceId={deviceId}
+        deviceLabel={deviceLabel}
+        accessDoc={accessDoc}
+        busy={busy}
+        errorMsg={errorMsg}
+        onSignIn={handleSignIn}
+        onSignOut={handleSignOut}
+        onRefreshStatus={() => evaluateAccess(false)}
+        onSubmitRegistration={handleSubmitRegistration}
+        onRequestDeviceBind={handleRequestDeviceBind}
+      />
+    );
+  }
+
+  return (
+    <>
+      <KumWatsaduWorkspace
+        user={user}
+        isAdmin={isAdmin}
+        deviceId={deviceId}
+        deviceLabel={deviceLabel}
+        offlineDaysRemaining={offlineDaysRemaining}
+        accessDoc={accessDoc}
+        pendingAdminCount={pendingAdminCount}
+        onOpenAdmin={() => setAdminModalOpen(true)}
+        onRecheckAccess={async () => {
+          await evaluateAccess(false);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (window as any).toast?.('ตรวจสอบสิทธิ์ล่าสุดกับฐานข้อมูลกลางเรียบร้อยแล้ว');
+        }}
+        onSignOutAccess={handleSignOut}
+      />
+      {isAdmin && (
+        <AdminAccessModal
+          open={adminModalOpen}
+          onClose={() => setAdminModalOpen(false)}
+          requests={adminRequests}
+          loading={adminLoading}
+          errorMsg={adminError}
+        />
+      )}
+    </>
   );
 }

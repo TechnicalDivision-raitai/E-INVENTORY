@@ -1,0 +1,154 @@
+{
+  "entities": {
+    "AccessRequest": {
+      "title": "AccessRequest",
+      "description": "User registration, device binding (up to 2 devices), and approval status for app access control.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth user UID matching the document ID."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 120,
+          "description": "Verified Google account email of the requester."
+        },
+        "fullName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120,
+          "description": "Full name of the requester."
+        },
+        "orgName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 180,
+          "description": "Organization / local administrative unit name."
+        },
+        "position": {
+          "type": "string",
+          "maxLength": 120,
+          "description": "Job title or position."
+        },
+        "phone": {
+          "type": "string",
+          "maxLength": 40,
+          "description": "Contact phone number."
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "Reason for access or device change note."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "approved", "rejected", "revoked"],
+          "description": "Current license approval status."
+        },
+        "maxDevices": {
+          "type": "number",
+          "description": "Maximum allowed devices per account (default 2)."
+        },
+        "pendingDeviceId": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Device ID awaiting initial or additional approval, or empty string."
+        },
+        "pendingDeviceLabel": {
+          "type": "string",
+          "maxLength": 120,
+          "description": "Human-readable OS/browser label of the pending device."
+        },
+        "approvedDeviceIds": {
+          "type": "array",
+          "description": "Approved device IDs bound to this account (up to maxDevices)."
+        },
+        "approvedDeviceLabels": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "Formatted summary of approved device labels."
+        },
+        "expiresAt": {
+          "type": "string",
+          "maxLength": 40,
+          "description": "Optional ISO expiration date or empty string for no expiration."
+        },
+        "reviewedBy": {
+          "type": "string",
+          "maxLength": 120,
+          "description": "Admin email that last reviewed the request."
+        },
+        "reviewedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the last admin review."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when request was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when request was last updated."
+        }
+      },
+      "required": [
+        "uid",
+        "email",
+        "fullName",
+        "orgName",
+        "position",
+        "phone",
+        "note",
+        "status",
+        "maxDevices",
+        "pendingDeviceId",
+        "pendingDeviceLabel",
+        "approvedDeviceIds",
+        "approvedDeviceLabels",
+        "expiresAt",
+        "reviewedBy",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AdminAccount": {
+      "title": "AdminAccount",
+      "description": "Authorized system administrator UID record.",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 120
+        },
+        "role": {
+          "type": "string",
+          "enum": ["owner"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["email", "role", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/access_requests/{userId}": {
+      "schema": { "$ref": "#/entities/AccessRequest" },
+      "description": "Per-user registration and 2-device license approval document."
+    },
+    "/admins/{userId}": {
+      "schema": { "$ref": "#/entities/AdminAccount" },
+      "description": "Explicit admin override lookup records."
+    }
+  }
+}
