@@ -21,15 +21,41 @@ import {
   FolderOpen,
   RotateCcw,
   CalendarPlus,
+  RefreshCw,
 } from 'lucide-react';
 import { bootKumWatsaduApp } from './kumwatsaduController';
 import { InstallAndPortableSection } from './PWAInstallButton';
+import { GoogleDriveBackupPanel } from './GoogleDriveBackupPanel';
 
 const TH_MONTHS_SHORT = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
 
-function formatLastBackupDate(raw: string | null): string {
-  const val = (raw || '').trim();
-  if (!val) return 'Never';
+function formatLastBackupDateTime(rawDate: string | null, rawAt: string | null): string {
+  const ts = (rawAt || '').trim();
+  const val = (rawDate || '').trim();
+  const formatFull = (d: Date) => {
+    const day = d.getDate();
+    const month = TH_MONTHS_SHORT[d.getMonth()];
+    const year = d.getFullYear() + 543;
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `${day} ${month} ${year} ${hh}:${mm} น.`;
+  };
+  if (val && /\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(val)) {
+    const parsed = new Date(val);
+    if (!Number.isNaN(parsed.getTime())) return formatFull(parsed);
+  }
+  if (ts) {
+    const parsed = new Date(ts);
+    if (!Number.isNaN(parsed.getTime())) {
+      const localYmd = `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(
+        parsed.getDate()
+      ).padStart(2, '0')}`;
+      if (!val || val === localYmd) {
+        return formatFull(parsed);
+      }
+    }
+  }
+  if (!val) return 'ยังไม่เคยสำรอง';
   const isoMatch = val.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (isoMatch) {
     const y = Number(isoMatch[1]) + 543;
@@ -51,29 +77,73 @@ export default function App() {
       return null;
     }
   });
+  const [lastBackupAtRaw, setLastBackupAtRaw] = useState<string | null>(() => {
+    try {
+      return (
+        localStorage.getItem('kumwatsadu-db-v1:lastBackupAt') ||
+        localStorage.getItem('kumwatsadu-db-v1:autoBackupAt') ||
+        localStorage.getItem('kumwatsadu-db-v1:driveBackupAt')
+      );
+    } catch {
+      return null;
+    }
+  });
 
   const [hasFolderBackup, setHasFolderBackup] = useState<boolean>(false);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [folderConflict, setFolderConflict] = useState<{
+    folderName: string;
+    fileName: string;
+    exportedAt: string;
+    backupCounts: { materials: number; moves: number; counts: number };
+    localCounts: { materials: number; moves: number; counts: number };
+    payload: unknown;
+  } | null>(null);
+  const [isResolvingFolderConflict, setIsResolvingFolderConflict] = useState<boolean>(false);
 
   useEffect(() => {
     const syncLastBackup = (ev?: Event) => {
       try {
         setLastBackupRaw(localStorage.getItem('kumwatsadu-db-v1:lastBackup'));
+        setLastBackupAtRaw(
+          localStorage.getItem('kumwatsadu-db-v1:lastBackupAt') ||
+            localStorage.getItem('kumwatsadu-db-v1:autoBackupAt') ||
+            localStorage.getItem('kumwatsadu-db-v1:driveBackupAt')
+        );
       } catch {
         setLastBackupRaw(null);
+        setLastBackupAtRaw(null);
       }
       const detail = (ev as CustomEvent | undefined)?.detail;
-      if (detail && typeof detail === 'object' && 'hasFolderBackup' in detail) {
-        setHasFolderBackup(Boolean(detail.hasFolderBackup));
+      if (detail && typeof detail === 'object') {
+        if ('hasFolderBackup' in detail) setHasFolderBackup(Boolean(detail.hasFolderBackup));
+        if ('lastBackupAt' in detail && detail.lastBackupAt) setLastBackupAtRaw(String(detail.lastBackupAt));
       }
     };
     const onStorage = (e: StorageEvent) => {
-      if (!e.key || e.key === 'kumwatsadu-db-v1:lastBackup') syncLastBackup();
+      if (
+        !e.key ||
+        e.key === 'kumwatsadu-db-v1:lastBackup' ||
+        e.key === 'kumwatsadu-db-v1:lastBackupAt' ||
+        e.key === 'kumwatsadu-db-v1:autoBackupAt' ||
+        e.key === 'kumwatsadu-db-v1:driveBackupAt'
+      ) {
+        syncLastBackup();
+      }
+    };
+    const onFolderConflict = (ev: Event) => {
+      const detail = (ev as CustomEvent)?.detail;
+      if (detail && detail.payload) {
+        setFolderConflict(detail);
+      }
     };
     window.addEventListener('storage', onStorage);
     window.addEventListener('kumwatsadu-lastbackup-change', syncLastBackup);
+    window.addEventListener('kumwatsadu-folder-backup-conflict', onFolderConflict);
     return () => {
       window.removeEventListener('storage', onStorage);
       window.removeEventListener('kumwatsadu-lastbackup-change', syncLastBackup);
+      window.removeEventListener('kumwatsadu-folder-backup-conflict', onFolderConflict);
     };
   }, []);
 
@@ -81,8 +151,41 @@ export default function App() {
     bootKumWatsaduApp((cnt) => setMaterialCount(cnt));
   }, []);
 
-  const lastBackupLabel = formatLastBackupDate(lastBackupRaw);
-  const hasBackup = Boolean((lastBackupRaw || '').trim());
+  const handleFolderRestoreChoice = async (useFolderBackup: boolean) => {
+    if (!folderConflict) return;
+    setIsResolvingFolderConflict(true);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const win = window as any;
+      if (useFolderBackup) {
+        await win.kwBackupApi?.restoreFromPayload?.(folderConflict.payload, {
+          replaceExisting: true,
+          source: 'folder',
+        });
+        win.toast?.(`ดึงข้อมูลจากโฟลเดอร์ "${folderConflict.fileName}" เข้าสู่ระบบแล้ว`);
+      } else {
+        await win.autoBk?.run?.(true);
+        win.toast?.('คงข้อมูลในเครื่องและสำรองลงโฟลเดอร์เรียบร้อยแล้ว');
+      }
+      setFolderConflict(null);
+    } finally {
+      setIsResolvingFolderConflict(false);
+    }
+  };
+
+  const lastBackupLabel = formatLastBackupDateTime(lastBackupRaw, lastBackupAtRaw);
+  const hasBackup = Boolean((lastBackupRaw || lastBackupAtRaw || '').trim());
+
+  const handleSyncBackupNow = async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (window as any).autoBk?.syncNow?.();
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const switchTab = (tab: string) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -333,7 +436,6 @@ export default function App() {
           </div>
 
           <div className="sidebar-user-box">
-            <div className="u-title">เจ้าหน้าที่พัสดุ</div>
             <div className="sidebar-quick">
               <button
                 type="button"
@@ -364,15 +466,10 @@ export default function App() {
             </div>
           </div>
 
-          <div className="sidebar-sec-head">
-            <span>พื้นที่ปฏิบัติงาน</span>
-            <span className="sidebar-role-pill">Staff</span>
-          </div>
-
           <nav className="tabs" role="tablist" aria-label="เมนูหลัก">
             <button role="tab" aria-selected="true" data-tab="stock">
               <Boxes className="nav-ic" />
-              <span className="nav-lbl">ภาพรวม</span>
+              <span className="nav-lbl">หน้าหลัก</span>
             </button>
             <button role="tab" aria-selected="false" data-tab="in">
               <PackagePlus className="nav-ic" />
@@ -413,26 +510,30 @@ export default function App() {
           {/* Top White Breadcrumb & Status Bar */}
           <div className="topbar no-print">
             <div className="breadcrumb">
-              <span className="crumb-root">พื้นที่ทำงาน</span>
+              <span className="crumb-root">ระบบคุมวัสดุ</span>
               <span className="crumb-sep">/</span>
               <span className="crumb-cur" id="breadcrumbCurrent">
-                ภาพรวม
+                หน้าหลัก
               </span>
             </div>
             <div className="topbar-right">
               <button
                 type="button"
                 id="topbarLastBackup"
-                onClick={() => switchTab('set')}
-                className={`backup-indicator ${hasBackup ? 'is-ok' : 'is-warn'}`}
+                onClick={handleSyncBackupNow}
+                disabled={isSyncing}
+                className={`backup-indicator ${hasBackup ? 'is-ok' : 'is-warn'}${isSyncing ? ' is-syncing' : ''}`}
                 title={
                   hasBackup
-                    ? `สำรองข้อมูลล่าสุด: ${lastBackupLabel} (คลิกเพื่อไปที่หน้าสำรองข้อมูล)`
-                    : 'ยังไม่มีประวัติการสำรองข้อมูล (คลิกเพื่อสำรองข้อมูล)'
+                    ? `สำรองข้อมูลล่าสุด: ${lastBackupLabel} · คลิกเพื่อซิงค์ข้อมูลเดี๋ยวนี้`
+                    : 'ยังไม่มีประวัติการสำรองข้อมูล · คลิกเพื่อเลือกโฟลเดอร์และสำรองข้อมูลเดี๋ยวนี้'
                 }
               >
                 <span className="backup-dot" aria-hidden="true" />
-                <span className="backup-txt">Last Backup: {lastBackupLabel}</span>
+                <span className="backup-txt">
+                  {isSyncing ? 'กำลังซิงค์...' : lastBackupLabel}
+                </span>
+                <RefreshCw className={`h-3.5 w-3.5 backup-sync-ic${isSyncing ? ' animate-spin' : ''}`} aria-hidden="true" />
               </button>
               <button
                 type="button"
@@ -478,7 +579,7 @@ export default function App() {
                   <div className="view-en no-print" id="activeViewEn">
                     INVENTORY &amp; MATERIAL MANAGEMENT
                   </div>
-                  <h1 id="activeViewTitle">ภาพรวมงานควบคุมวัสดุ</h1>
+                  <h1 id="activeViewTitle">สรุปข้อมูลงานควบคุมวัสดุ</h1>
                   <p className="view-sub no-print" id="activeViewSub">
                     ติดตามมูลค่าวัสดุคงเหลือ รับเข้า เบิกจ่าย และสถานะสต็อกในที่เดียว
                   </p>
@@ -504,7 +605,7 @@ export default function App() {
             {/* วัสดุคงคลัง */}
             <section id="view-stock">
               <div className="repbar no-print" style={{ marginBottom: 14 }}>
-                <div className="seg" role="tablist" aria-label="มุมมองภาพรวมงานควบคุมวัสดุ">
+                <div className="seg" role="tablist" aria-label="มุมมองสรุปข้อมูลงานควบคุมวัสดุ">
                   <button
                     type="button"
                     className="btn"
@@ -513,7 +614,7 @@ export default function App() {
                     aria-selected="true"
                     aria-pressed="true"
                   >
-                    ภาพรวม
+                    สรุปยอดและสถิติ
                   </button>
                   <button
                     type="button"
@@ -939,10 +1040,12 @@ export default function App() {
                       <thead>
                         <tr>
                           <th>แถว</th>
-                          <th>ชื่อวัสดุ</th>
+                          <th>ชื่อหรือชนิดวัสดุ</th>
+                          <th>รหัส</th>
                           <th>ประเภท</th>
                           <th>หน่วย</th>
-                          <th>หมายเหตุ</th>
+                          <th>ขนาดหรือลักษณะ</th>
+                          <th>ที่เก็บ</th>
                           <th className="num">อย่างสูง/ต่ำ</th>
                           <th className="num">ยกมา</th>
                           <th className="num">ราคา/หน่วย</th>
@@ -1395,7 +1498,8 @@ export default function App() {
                 </div>
                 <p className="hint">
                   <b>ข้อมูลทั้งหมดถูกจัดเก็บไว้ในเบราว์เซอร์ของเครื่องนี้ (LocalStorage)</b> แนะนำให้ดาวน์โหลดไฟล์สำรอง
-                  (.json) เก็บไว้หรือเปิดระบบสำรองข้อมูลอัตโนมัติลงโฟลเดอร์ในเครื่อง <span id="lastBackup"></span>
+                  (.json) เปิดระบบสำรองข้อมูลลงโฟลเดอร์ในเครื่อง หรือสำรองขึ้น Google Drive ส่วนตัว{' '}
+                  <span id="lastBackup"></span>
                 </p>
                 <div className="repbar" style={{ margin: 0 }}>
                   <button className="btn primary" id="btnBackup">
@@ -1435,6 +1539,10 @@ export default function App() {
                       ปิดสำรองอัตโนมัติ
                     </button>
                   </div>
+
+                  <hr className="abox-divider" />
+
+                  <GoogleDriveBackupPanel />
                 </div>
               </div>
             </div>
@@ -1604,6 +1712,76 @@ export default function App() {
           <div className="mv-detail-foot" id="mvDetailFoot"></div>
         </div>
       </div>
+
+      {/* Folder Existing Backup Conflict Modal */}
+      {folderConflict ? (
+        <div
+          className="modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="folderConflictTitle"
+          style={{ alignItems: 'center', justifyContent: 'center' }}
+        >
+          <div className="mv-detail-box" style={{ width: 'min(500px, 100%)' }}>
+            <div className="mv-detail-head">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <FolderOpen className="h-5 w-5" style={{ color: 'var(--accent)' }} />
+                <div>
+                  <h3 id="folderConflictTitle">พบไฟล์สำรองเดิมในโฟลเดอร์ที่เลือก</h3>
+                  <div className="sub">โฟลเดอร์: {folderConflict.folderName}</div>
+                </div>
+              </div>
+            </div>
+            <div className="mv-detail-body" style={{ gap: 10 }}>
+              <div className="mv-kv-grid" style={{ gridTemplateColumns: 'minmax(0, 1fr)' }}>
+                <div className="mv-kv">
+                  <span className="mv-kv-k">ไฟล์สำรองที่พบ</span>
+                  <span className="mv-kv-v">{folderConflict.fileName}</span>
+                </div>
+                <div className="mv-kv">
+                  <span className="mv-kv-k">วันที่สำรองล่าสุดในโฟลเดอร์</span>
+                  <span className="mv-kv-v">{formatLastBackupDateTime(null, folderConflict.exportedAt)}</span>
+                </div>
+                <div className="mv-kv">
+                  <span className="mv-kv-k">ข้อมูลในไฟล์สำรอง</span>
+                  <span className="mv-kv-v">
+                    วัสดุ {folderConflict.backupCounts.materials} รายการ · ใบรับ-ใบเบิก{' '}
+                    {folderConflict.backupCounts.moves} ใบ · ตรวจนับ {folderConflict.backupCounts.counts} ปีงบ
+                  </span>
+                </div>
+                <div className="mv-kv">
+                  <span className="mv-kv-k">ข้อมูลในเบราว์เซอร์เครื่องนี้ตอนนี้</span>
+                  <span className="mv-kv-v">
+                    วัสดุ {folderConflict.localCounts.materials} รายการ · ใบรับ-ใบเบิก{' '}
+                    {folderConflict.localCounts.moves} ใบ · ตรวจนับ {folderConflict.localCounts.counts} ปีงบ
+                  </span>
+                </div>
+              </div>
+              <p className="sub" style={{ margin: 0, lineHeight: 1.5 }}>
+                เนื่องจากในเครื่องมีข้อมูลอยู่แล้ว โปรดเลือกว่าต้องการดึงข้อมูลจากไฟล์สำรองในโฟลเดอร์มาใช้งาน หรือคงข้อมูลปัจจุบันและสำรองทับลงโฟลเดอร์
+              </p>
+            </div>
+            <div className="mv-detail-foot">
+              <button
+                type="button"
+                className="btn"
+                onClick={() => void handleFolderRestoreChoice(false)}
+                disabled={isResolvingFolderConflict}
+              >
+                ใช้ข้อมูลในเครื่องและสำรองทับลงโฟลเดอร์
+              </button>
+              <button
+                type="button"
+                className="btn primary"
+                onClick={() => void handleFolderRestoreChoice(true)}
+                disabled={isResolvingFolderConflict}
+              >
+                {isResolvingFolderConflict ? 'กำลังโหลด...' : 'ดึงข้อมูลจากโฟลเดอร์มาใช้งาน'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

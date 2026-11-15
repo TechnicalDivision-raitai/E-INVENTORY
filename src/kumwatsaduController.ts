@@ -71,7 +71,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
   ];
   const thDate = (iso: string) => {
     if (!iso) return '';
-    const [y, m, d] = iso.split('-');
+    const [y, m, d] = String(iso).slice(0, 10).split('-');
     return +d + ' ' + TH_M[+m - 1] + ' ' + String(+y + 543).slice(2);
   };
   const thDateFull = (iso: string) => {
@@ -437,8 +437,8 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
   const TAB_META: Record<string, { en: string; crumb: string; title: string; sub: string }> = {
     stock: {
       en: 'INVENTORY & MATERIAL MANAGEMENT',
-      crumb: 'ภาพรวม',
-      title: 'ภาพรวมงานควบคุมวัสดุ',
+      crumb: 'หน้าหลัก',
+      title: 'สรุปข้อมูลงานควบคุมวัสดุ',
       sub: 'ติดตามมูลค่าวัสดุคงเหลือ รับเข้า เบิกจ่าย และสถานะสต็อกในที่เดียว',
     },
     in: {
@@ -2862,12 +2862,14 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     return rows;
   }
   const IMP_COLS: Array<[string, RegExp]> = [
+    ['code', /รหัส/],
     ['max', /อย่างสูง|สูงสุด/],
     ['min', /อย่างต่ำ|ต่ำสุด/],
     ['price', /ราคา/],
     ['qty', /ยกมา|คงเหลือ|จำนวน/],
     ['cat', /ประเภท/],
-    ['note', /หมายเหตุ|ขนาด|ยี่ห้อ/],
+    ['loc', /ที่เก็บ|สถานที่|คลัง/],
+    ['note', /ขนาด|ลักษณะ|หมายเหตุ|ยี่ห้อ|รุ่น/],
     ['unit', /หน่วย/],
     ['name', /ชื่อ|รายการ/],
   ];
@@ -2892,7 +2894,12 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       });
     } else {
       h = -1;
-      ['name', 'cat', 'unit', 'note', 'max', 'min', 'qty', 'price'].forEach((k, i) => (map[k] = i));
+      const maxCols = rows.reduce((mx, r) => Math.max(mx, r.length), 0);
+      const fallbackOrder =
+        maxCols >= 9
+          ? ['name', 'cat', 'code', 'unit', 'note', 'loc', 'max', 'min', 'qty', 'price']
+          : ['name', 'cat', 'unit', 'note', 'max', 'min', 'qty', 'price'];
+      fallbackOrder.forEach((k, i) => (map[k] = i));
     }
     if (map.name == null || map.unit == null) return null;
     const have = new Set(materials.map((m) => m.name)),
@@ -2908,15 +2915,17 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       const it: any = {
         row: h + 2 + i,
         name: g('name'),
+        code: g('code'),
         cat: g('cat') || 'วัสดุอื่น',
         unit: g('unit'),
+        loc: g('loc'),
         note: g('note'),
         qty: numOf(g('qty')),
         price: numOf(g('price')),
         max: numOrNull(g('max')),
         min: numOrNull(g('min')),
       };
-      if (!it.name && !it.unit && !it.note) return;
+      if (!it.name && !it.unit && !it.note && !it.code && !it.loc) return;
       if (!it.name || !it.unit) {
         it.st = 'bad';
         it.why = !it.name ? 'ไม่มีชื่อวัสดุ' : 'ไม่มีหน่วยนับ';
@@ -2926,6 +2935,9 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       } else if (seen.has(it.name)) {
         it.st = 'skip';
         it.why = 'ชื่อซ้ำในไฟล์';
+      } else if (it.max != null && it.min != null && it.min > it.max) {
+        it.st = 'bad';
+        it.why = 'อย่างต่ำมากกว่าอย่างสูง';
       } else if (it.qty < 0 || it.price < 0) {
         it.st = 'bad';
         it.why = 'จำนวน/ราคาติดลบ';
@@ -2949,9 +2961,11 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     $('impRows').innerHTML = impItems
       .map(
         (x) =>
-          `<tr><td class="sub">${x.row}</td><td>${esc(x.name)}</td><td>${esc(x.cat)}</td><td>${esc(
-            x.unit
-          )}</td><td class="sub">${esc(x.note)}</td><td class="num">${
+          `<tr><td class="sub">${x.row}</td><td>${esc(x.name)}</td><td class="sub">${esc(
+            x.code || '—'
+          )}</td><td>${esc(x.cat)}</td><td>${esc(x.unit)}</td><td class="sub">${esc(
+            x.note || '—'
+          )}</td><td class="sub">${esc(x.loc || '—')}</td><td class="num">${
             x.max != null || x.min != null
               ? (x.max != null ? fmtQ(x.max) : '-') + ' / ' + (x.min != null ? fmtQ(x.min) : '-')
               : ''
@@ -3054,8 +3068,10 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
           .doc('materials/' + id)
           .set({
             name: x.name,
+            code: x.code || '',
             cat: x.cat,
             unit: x.unit,
+            loc: x.loc || '',
             note: x.note,
             max: x.max,
             min: x.min,
@@ -3097,24 +3113,27 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       toast('โหลดตัวสร้างไฟล์ Excel ไม่สำเร็จ');
       return;
     }
+    const headers = [
+      'ชื่อหรือชนิดวัสดุ',
+      'ประเภทวัสดุ',
+      'รหัสวัสดุ',
+      'หน่วยที่นับ',
+      'ขนาดหรือลักษณะ',
+      'ที่เก็บ',
+      'จำนวนอย่างสูง',
+      'จำนวนอย่างต่ำ',
+      'จำนวนคงเหลือยกมา',
+      'ราคาต่อหน่วย (บาท)',
+    ];
     const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.aoa_to_sheet([
-      [
-        'ชื่อวัสดุ',
-        'ประเภทวัสดุ',
-        'หน่วยนับ',
-        'หมายเหตุ / ขนาด / ยี่ห้อ',
-        'จำนวนอย่างสูง',
-        'จำนวนอย่างต่ำ',
-        'จำนวนคงเหลือยกมา',
-        'ราคาต่อหน่วย (บาท)',
-      ],
-    ]);
+    const ws = XLSX.utils.aoa_to_sheet([headers]);
     ws['!cols'] = [
-      { wch: 40 },
-      { wch: 28 },
+      { wch: 38 },
+      { wch: 26 },
+      { wch: 16 },
       { wch: 12 },
       { wch: 28 },
+      { wch: 24 },
       { wch: 15 },
       { wch: 15 },
       { wch: 18 },
@@ -3124,33 +3143,27 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     const help = [
       ['วิธีกรอก'],
       ['กรอกในแผ่นงาน “วัสดุ” แถวละ 1 รายการ เริ่มแถวที่ 2'],
-      ['ชื่อวัสดุ และ หน่วยนับ ต้องกรอก · ชื่อที่มีในทะเบียนแล้วจะถูกข้าม'],
+      ['ชื่อหรือชนิดวัสดุ และ หน่วยที่นับ ต้องกรอก · ชื่อที่มีในทะเบียนแล้วจะถูกข้าม'],
       ['ประเภทวัสดุ เว้นว่างได้ (จะเป็น “วัสดุอื่น”) หรือพิมพ์ประเภทใหม่เองได้'],
-      ['จำนวนอย่างสูง / จำนวนอย่างต่ำ เว้นว่างได้ (ระบบเตือนเมื่อเหลือไม่เกินจำนวนอย่างต่ำ)'],
+      ['รหัสวัสดุ, ขนาดหรือลักษณะ และ ที่เก็บ เว้นว่างได้ (ข้อมูลจะแสดงในหัวแบบฟอร์ม “บัญชีวัสดุ”)'],
+      ['จำนวนอย่างสูง / จำนวนอย่างต่ำ เว้นว่างได้ (จำนวนอย่างต่ำต้องไม่มากกว่าจำนวนอย่างสูง)'],
       ['จำนวนคงเหลือยกมา และ ราคาต่อหน่วย เว้นว่างได้ ถ้ากรอก ระบบจะบันทึกใบรับยอดยกมาให้'],
       [''],
       ['ตัวอย่าง'],
-      [
-        'ชื่อวัสดุ',
-        'ประเภทวัสดุ',
-        'หน่วยนับ',
-        'หมายเหตุ / ขนาด / ยี่ห้อ',
-        'จำนวนอย่างสูง',
-        'จำนวนอย่างต่ำ',
-        'จำนวนคงเหลือยกมา',
-        'ราคาต่อหน่วย (บาท)',
-      ],
-      ['กระดาษ A4 80 แกรม', 'วัสดุสำนักงาน', 'รีม', '', 50, 10, 20, 125],
-      ['ทรายหยาบ', 'วัสดุก่อสร้าง', 'คิว', '', '', '', 3, 450],
+      headers,
+      ['กระดาษถ่ายเอกสาร A4 80 แกรม', 'วัสดุสำนักงาน', 'OFF-001', 'รีม', 'ขนาด A4 80 แกรม สีขาว', 'ตู้เก็บวัสดุ 1', 50, 10, 20, 125],
+      ['ทรายหยาบ', 'วัสดุก่อสร้าง', 'CON-001', 'คิว', 'ทรายหยาบสำหรับงานก่อสร้าง', 'คลังพัสดุกองช่าง', '', '', 3, 450],
       [''],
       ['ประเภทวัสดุที่มีในระบบ'],
       ...allCats().map((c) => [c]),
     ];
     const hs = XLSX.utils.aoa_to_sheet(help);
     hs['!cols'] = [
-      { wch: 60 },
-      { wch: 18 },
-      { wch: 10 },
+      { wch: 62 },
+      { wch: 24 },
+      { wch: 16 },
+      { wch: 12 },
+      { wch: 28 },
       { wch: 24 },
       { wch: 15 },
       { wch: 15 },
@@ -5018,6 +5031,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       (ok) => {
         if (ok) {
           localDb.meta('lastBackup', todayISO());
+          localDb.meta('lastBackupAt', new Date().toISOString());
           backupNote();
         }
       }
@@ -5142,6 +5156,42 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
   setRepSeg();
   renderAll();
 
+  let isRestoringSnapshot = false;
+  let bootedSig: string | null = null;
+
+  const sigOfPayload = (mats: any[], mvs: any[], cnts: any, stg: any) => {
+    let m = '';
+    for (const x of mats || []) if ((x.updatedAt || '') > m) m = x.updatedAt;
+    for (const x of mvs || []) if ((x.updatedAt || '') > m) m = x.updatedAt;
+    if (Array.isArray(cnts)) {
+      for (const x of cnts) {
+        const u = x?.updatedAt || '';
+        if (u > m) m = u;
+      }
+    } else {
+      for (const k in cnts || {}) {
+        const u = cnts[k]?.updatedAt || '';
+        if (u > m) m = u;
+      }
+    }
+    const cntLen = Array.isArray(cnts) ? cnts.length : Object.keys(cnts || {}).length;
+    return [(mats || []).length, (mvs || []).length, cntLen, m, JSON.stringify(stg || {}).length].join('|');
+  };
+
+  const getLocalLatestModifiedMs = (): number => {
+    let maxMs = 0;
+    const pushIso = (iso?: string | null) => {
+      if (!iso) return;
+      const ms = Date.parse(String(iso));
+      if (Number.isFinite(ms) && ms > maxMs) maxMs = ms;
+    };
+    pushIso(localDb.meta('lastLocalEditAt'));
+    for (const x of materials) pushIso(x.updatedAt || x.createdAt);
+    for (const x of moves) pushIso(x.updatedAt || x.createdAt);
+    for (const k in counts) pushIso(counts[k]?.updatedAt);
+    return maxMs;
+  };
+
   const autoBk = (() => {
     const SUP = typeof (window as any).showDirectoryPicker === 'function';
     const DBN = 'kumwatsadu-autobackup',
@@ -5197,16 +5247,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       moves,
       counts: Object.entries(counts).map(([id, c]) => ({ id, ...c })),
     });
-    const sig = () => {
-      let m = '';
-      for (const x of materials) if ((x.updatedAt || '') > m) m = x.updatedAt;
-      for (const x of moves) if ((x.updatedAt || '') > m) m = x.updatedAt;
-      for (const k in counts) {
-        const u = counts[k].updatedAt || '';
-        if (u > m) m = u;
-      }
-      return [materials.length, moves.length, Object.keys(counts).length, m, JSON.stringify(settings).length].join('|');
-    };
+    const sig = () => sigOfPayload(materials, moves, counts, settings);
     async function writeFile(name: string, text: string) {
       const fh = await dir.getFileHandle(name, { create: true });
       const w = await fh.createWritable();
@@ -5223,6 +5264,50 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
         .reverse()
         .slice(KEEP)
         .forEach((n) => dir.removeEntry(n).catch(() => {}));
+    }
+    async function readLatestBackup(): Promise<{ fileName: string; data: any; exportedMs: number } | null> {
+      if (!dir) return null;
+      const candidates: Array<{ name: string; handle: any }> = [];
+      try {
+        for await (const [name, handle] of dir.entries()) {
+          if (handle.kind === 'file' && /^(KumWatsadu-backup-|สำรองข้อมูลคุมวัสดุ).*\.json$/i.test(name)) {
+            candidates.push({ name, handle });
+          }
+        }
+      } catch {
+        return null;
+      }
+      if (!candidates.length) return null;
+
+      const loaded: Array<{ fileName: string; data: any; mtime: number; exportedMs: number }> = [];
+      for (const c of candidates) {
+        try {
+          const file = await c.handle.getFile();
+          const text = await file.text();
+          const parsed = JSON.parse(text);
+          if (parsed && parsed.app === 'kongchang-stock' && Array.isArray(parsed.materials) && Array.isArray(parsed.moves)) {
+            const expMs = parsed.exportedAt ? Date.parse(parsed.exportedAt) : 0;
+            loaded.push({
+              fileName: c.name,
+              data: parsed,
+              mtime: file.lastModified || 0,
+              exportedMs: Number.isFinite(expMs) && expMs > 0 ? expMs : file.lastModified || 0,
+            });
+          }
+        } catch {
+          // ignore malformed file
+        }
+      }
+      if (!loaded.length) return null;
+
+      loaded.sort((a, b) => {
+        if (b.exportedMs !== a.exportedMs) return b.exportedMs - a.exportedMs;
+        if (b.mtime !== a.mtime) return b.mtime - a.mtime;
+        if (a.fileName === PFX + 'latest.json') return -1;
+        if (b.fileName === PFX + 'latest.json') return 1;
+        return b.fileName.localeCompare(a.fileName);
+      });
+      return { fileName: loaded[0].fileName, data: loaded[0].data, exportedMs: loaded[0].exportedMs };
     }
     async function run(force?: boolean, prefix?: string) {
       if (!dir || busy) return false;
@@ -5242,8 +5327,10 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
           await writeFile(PFX + todayISO() + '.json', txt);
           await prune();
         }
+        const nowIso = new Date().toISOString();
         localDb.meta('lastBackup', todayISO());
-        localDb.meta('autoBackupAt', new Date().toISOString());
+        localDb.meta('lastBackupAt', nowIso);
+        localDb.meta('autoBackupAt', nowIso);
         state = 'on';
         lastSig = sig();
         ui();
@@ -5262,7 +5349,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       }
     }
     function changed() {
-      if (state !== 'on') return;
+      if (state !== 'on' || isRestoringSnapshot) return;
       const s = sig();
       if (lastSig === null) {
         lastSig = s;
@@ -5305,6 +5392,64 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       if (ab) ab.hidden = state !== 'ask';
       backupNote();
     }
+    async function tryAutoRestoreFromDir(mode: 'pick' | 'allow' | 'init'): Promise<'restored' | 'prompted' | 'none'> {
+      const found = await readLatestBackup();
+      if (!found) return 'none';
+      const hasLocal = materials.length > 0 || moves.length > 0 || Object.keys(counts).length > 0;
+      const localMs = getLocalLatestModifiedMs();
+      const curSig = sig();
+      const foundSig = sigOfPayload(found.data.materials, found.data.moves, found.data.counts, {
+        ...DEF_SET,
+        ...(found.data.settings || {}),
+      });
+
+      if (hasLocal && curSig === foundSig) {
+        const expIso = found.data.exportedAt || new Date(found.exportedMs || Date.now()).toISOString();
+        localDb.meta('lastBackup', String(expIso).slice(0, 10) || todayISO());
+        localDb.meta('lastBackupAt', expIso);
+        localDb.meta('autoBackupAt', expIso);
+        lastSig = sig();
+        ui();
+        toast(`เชื่อมต่อโฟลเดอร์ “${dir?.name || ''}” แล้ว (ข้อมูลตรงกับไฟล์สำรองล่าสุด)`);
+        return 'restored';
+      }
+
+      if (!hasLocal || found.exportedMs > localMs + 2000) {
+        await (window as any).kwBackupApi.restoreFromPayload(found.data, {
+          replaceExisting: true,
+          source: 'folder',
+        });
+        toast(
+          `ดึงข้อมูลที่เคยสำรองไว้จากโฟลเดอร์ “${found.fileName}” เข้าสู่ระบบอัตโนมัติแล้ว (${found.data.materials.length} วัสดุ, ${found.data.moves.length} เอกสาร)`
+        );
+        return 'restored';
+      }
+
+      if (mode !== 'init') {
+        window.dispatchEvent(
+          new CustomEvent('kumwatsadu-folder-backup-conflict', {
+            detail: {
+              folderName: dir?.name || 'โฟลเดอร์สำรองข้อมูล',
+              fileName: found.fileName,
+              exportedAt: found.data.exportedAt || new Date(found.exportedMs).toISOString(),
+              backupCounts: {
+                materials: found.data.materials.length,
+                moves: found.data.moves.length,
+                counts: Array.isArray(found.data.counts) ? found.data.counts.length : 0,
+              },
+              localCounts: {
+                materials: materials.length,
+                moves: moves.length,
+                counts: Object.keys(counts).length,
+              },
+              payload: found.data,
+            },
+          })
+        );
+        return 'prompted';
+      }
+      return 'none';
+    }
     async function pick() {
       if (!SUP) return;
       try {
@@ -5317,8 +5462,12 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
         await idbSet('dir', h);
         state = 'on';
         lastSig = null;
-        await run(true);
-        toast('เปิดสำรองอัตโนมัติแล้ว');
+        ui();
+        const res = await tryAutoRestoreFromDir('pick');
+        if (res === 'none') {
+          await run(true);
+          toast('เปิดสำรองอัตโนมัติแล้ว');
+        }
       } catch (e: any) {
         if (e?.name !== 'AbortError') {
           state = 'err';
@@ -5332,8 +5481,11 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
         state = 'on';
         lastSig = null;
         ui();
-        await run();
-        toast('เปิดสำรองอัตโนมัติแล้ว');
+        const res = await tryAutoRestoreFromDir('allow');
+        if (res === 'none') {
+          await run();
+          toast('เปิดสำรองอัตโนมัติแล้ว');
+        }
       } else {
         state = 'ask';
         ui();
@@ -5361,7 +5513,57 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
         state = p === 'granted' ? 'on' : 'ask';
       }
       ui();
-      if (state === 'on') changed();
+      if (state === 'on') {
+        if (!materials.length && !moves.length) {
+          await tryAutoRestoreFromDir('init');
+        }
+        changed();
+      }
+    }
+    async function syncNow() {
+      const driveSync = (window as any).kwDriveSyncNow;
+      const driveCanSync = typeof driveSync === 'function' && Boolean((window as any).kwDriveIsReady);
+      let folderOk = false;
+      let driveOk = false;
+
+      if (dir) {
+        const p = await perm(true);
+        if (p !== 'granted') {
+          state = 'ask';
+          ui();
+          if (!driveCanSync) {
+            toast('กรุณาอนุญาตการเข้าถึงโฟลเดอร์เพื่อซิงค์ข้อมูล');
+            return false;
+          }
+        } else {
+          state = 'on';
+          folderOk = await run(true);
+        }
+      }
+
+      if (driveCanSync) {
+        driveOk = await driveSync(true);
+      }
+
+      if (!dir && !driveCanSync) {
+        if (SUP) {
+          await pick();
+          return state === 'on';
+        }
+        $('btnBackup')?.click();
+        return true;
+      }
+
+      if (folderOk && driveOk) {
+        toast('ซิงค์ข้อมูลลงโฟลเดอร์และ Google Drive เรียบร้อยแล้ว');
+      } else if (driveOk) {
+        toast('ซิงค์และสำรองข้อมูลลง Google Drive เรียบร้อยแล้ว');
+      } else if (folderOk) {
+        toast('ซิงค์และสำรองข้อมูลลงโฟลเดอร์เรียบร้อยแล้ว');
+      } else {
+        toast('ซิงค์ข้อมูลไม่สำเร็จ กรุณาลองอีกครั้ง');
+      }
+      return folderOk || driveOk;
     }
     return {
       init,
@@ -5370,7 +5572,12 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       allow,
       off,
       run,
+      syncNow,
       ui,
+      getSig: sig,
+      syncSig: () => {
+        lastSig = sig();
+      },
       get on() {
         return state === 'on';
       },
@@ -5399,20 +5606,142 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
   (window as any).autoBk = autoBk;
   (window as any).toast = toast;
 
+  (window as any).kwBackupApi = {
+    getBackupJson: () => ({
+      app: 'kongchang-stock',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      settings,
+      materials,
+      moves,
+      counts: Object.entries(counts).map(([id, c]) => ({ id, ...c })),
+    }),
+    hasData: () => materials.length > 0 || moves.length > 0 || Object.keys(counts).length > 0,
+    getCountsSummary: () => ({
+      materials: materials.length,
+      moves: moves.length,
+      counts: Object.keys(counts).length,
+    }),
+    getLocalLatestModifiedMs,
+    getDataSignature: () => autoBk.getSig(),
+    getPayloadSignature: (d: any) =>
+      sigOfPayload(d?.materials || [], d?.moves || [], d?.counts || [], { ...DEF_SET, ...(d?.settings || {}) }),
+    recordExternalBackup: (source: string, isoNow: string, email?: string) => {
+      localDb.meta('lastBackup', todayISO());
+      localDb.meta('lastBackupAt', isoNow);
+      if (source === 'drive') {
+        localDb.meta('driveBackupAt', isoNow);
+        if (email) localDb.meta('driveBackupEmail', email);
+      }
+      backupNote();
+    },
+    restoreFromPayload: async (
+      d: any,
+      opts?: { replaceExisting?: boolean; source?: 'folder' | 'drive' | 'manual'; email?: string }
+    ) => {
+      if (!db || !d || d.app !== 'kongchang-stock' || !Array.isArray(d.materials) || !Array.isArray(d.moves)) {
+        throw new Error('ข้อมูลไฟล์สำรองไม่ถูกต้อง');
+      }
+      const clean = (o: any) => {
+        const { id, ...rest } = o;
+        void id;
+        return rest;
+      };
+      isRestoringSnapshot = true;
+      let n = 0;
+      try {
+        if (opts?.replaceExisting && typeof localDb.replaceSnapshot === 'function') {
+          const nextStore: Record<string, Record<string, any>> = {
+            materials: {},
+            moves: {},
+            settings: {},
+            counts: {},
+          };
+          if (d.settings) {
+            nextStore.settings.main = { ...DEF_SET, ...d.settings };
+          }
+          for (const m of d.materials) {
+            if (!m?.id) continue;
+            nextStore.materials[m.id] = clean(m);
+            n++;
+          }
+          for (const mv of d.moves) {
+            if (!mv?.id) continue;
+            nextStore.moves[mv.id] = clean(mv);
+            n++;
+          }
+          for (const c of Array.isArray(d.counts) ? d.counts : []) {
+            if (!c?.id) continue;
+            nextStore.counts[c.id] = clean(c);
+            n++;
+          }
+          localDb.replaceSnapshot(nextStore);
+        } else {
+          if (d.settings) {
+            applySet(d.settings);
+            await db.doc('settings/main').set({ ...settings });
+          }
+          for (const m of d.materials) {
+            if (!m.id) continue;
+            await db.doc('materials/' + m.id).set(clean(m));
+            n++;
+          }
+          for (const mv of d.moves) {
+            if (!mv.id) continue;
+            await db.doc('moves/' + mv.id).set(clean(mv));
+            n++;
+          }
+          for (const c of Array.isArray(d.counts) ? d.counts : []) {
+            if (!c.id) continue;
+            await db.doc('counts/' + c.id).set(clean(c));
+            n++;
+          }
+        }
+
+        const expIso = d.exportedAt || new Date().toISOString();
+        const expDay = String(expIso).slice(0, 10) || todayISO();
+        localDb.meta('lastLocalEditAt', expIso);
+        localDb.meta('lastBackup', expDay);
+        localDb.meta('lastBackupAt', expIso);
+        if (opts?.source === 'folder') {
+          localDb.meta('autoBackupAt', expIso);
+        } else if (opts?.source === 'drive') {
+          localDb.meta('driveBackupAt', expIso);
+          if (opts.email) localDb.meta('driveBackupEmail', opts.email);
+        }
+        bootedSig = autoBk.getSig();
+        autoBk.syncSig();
+        backupNote();
+        autoBk.ui();
+        window.dispatchEvent(
+          new CustomEvent('kumwatsadu-snapshot-restored', {
+            detail: { signature: bootedSig, source: opts?.source || 'manual' },
+          })
+        );
+        return n;
+      } finally {
+        isRestoringSnapshot = false;
+      }
+    },
+    notifyToast: (text: string) => toast(text),
+  };
+
   function backupNote() {
     const lb = localDb.meta('lastBackup');
+    const lbAt = localDb.meta('lastBackupAt') || localDb.meta('autoBackupAt') || localDb.meta('driveBackupAt') || '';
     const abAt = localDb.meta('autoBackupAt');
-    const hasFolderBackup = Boolean(autoBk.hasDir && (abAt || lb));
+    const gdAt = localDb.meta('driveBackupAt');
+    const hasFolderBackup = Boolean((autoBk.hasDir && (abAt || lb)) || gdAt);
     if ($('lastBackup')) $('lastBackup').textContent = lb ? '· สำรองล่าสุด ' + thDate(lb) : '· ยังไม่เคยสำรองข้อมูล';
     if ($('topbarStoragePill')) $('topbarStoragePill').hidden = hasFolderBackup;
     window.dispatchEvent(
       new CustomEvent('kumwatsadu-lastbackup-change', {
-        detail: { lastBackup: lb || '', hasFolderBackup },
+        detail: { lastBackup: lb || '', lastBackupAt: lbAt, hasFolderBackup },
       })
     );
-    if (!autoBk.hasDir && autoBk.state === 'off') {
+    if (!autoBk.hasDir && autoBk.state === 'off' && !gdAt) {
       notice(
-        'ยังไม่ได้เลือกการเก็บสำรองข้อมูลอัตโนมัติ ไปที่แท็บ “ตั้งค่า / สำรองข้อมูล” แล้วกด “เลือกโฟลเดอร์สำรองอัตโนมัติ”'
+        'ยังไม่ได้เลือกการเก็บสำรองข้อมูลอัตโนมัติ ไปที่แท็บ “ตั้งค่า / สำรองข้อมูล” แล้วเลือกโฟลเดอร์สำรองอัตโนมัติ หรือเชื่อมต่อ Google Drive'
       );
     } else {
       notice('');
@@ -5428,12 +5757,34 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     }
     db = localDb;
     const ready = { m: 0, v: 0 };
-    autoBk.init();
+    const notifyDataChanged = () => {
+      if (isRestoringSnapshot) return;
+      const cur = autoBk.getSig();
+      if (bootedSig === null) {
+        bootedSig = cur;
+      } else if (cur !== bootedSig) {
+        bootedSig = cur;
+        localDb.meta('lastLocalEditAt', new Date().toISOString());
+      }
+      window.dispatchEvent(
+        new CustomEvent('kumwatsadu-data-changed', {
+          detail: { signature: cur },
+        })
+      );
+    };
+    let autoBkBooted = false;
     const after = () => {
       if (ready.m && ready.v) {
+        if (!autoBkBooted) {
+          autoBkBooted = true;
+          void autoBk.init();
+        }
         renderAll();
         backupNote();
-        autoBk.changed();
+        if (!isRestoringSnapshot) {
+          autoBk.changed();
+          notifyDataChanged();
+        }
       }
     };
     db.collection('materials').onSnapshot((s: any) => {
@@ -5454,7 +5805,10 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     db.collection('counts').onSnapshot((s: any) => {
       counts = {};
       s.docs.forEach((x: any) => (counts[x.id] = x.data()));
-      if (ready.m && ready.v) autoBk.changed();
+      if (ready.m && ready.v && !isRestoringSnapshot) {
+        autoBk.changed();
+        notifyDataChanged();
+      }
       if (!cDirty) cDraft = null;
       if (
         curTab() === 'cnt' &&
@@ -5569,7 +5923,9 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       try {
         localStorage.removeItem('kumwatsadu-db-v1');
         localStorage.removeItem('kumwatsadu-db-v1:lastBackup');
+        localStorage.removeItem('kumwatsadu-db-v1:lastBackupAt');
         localStorage.removeItem('kumwatsadu-db-v1:autoBackupAt');
+        localStorage.removeItem('kumwatsadu-db-v1:driveBackupAt');
       } catch {
         // ignore
       }

@@ -335,6 +335,17 @@ export function initMiniLibsAndDb() {
       load();
       ['materials', 'moves', 'settings', 'counts'].forEach(notify);
     },
+    replaceSnapshot(nextStore: Record<string, Record<string, any>>) {
+      const prev = store;
+      store = clone(nextStore || {});
+      try {
+        persist();
+      } catch (e) {
+        store = prev;
+        throw e;
+      }
+      ['materials', 'moves', 'settings', 'counts'].forEach(notify);
+    },
   };
 
   window.addEventListener('storage', (e) => {

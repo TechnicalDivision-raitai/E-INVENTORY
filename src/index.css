@@ -339,15 +339,20 @@ nav.tabs button[aria-selected="true"] .nav-cnt {
 }
 
 .crumb-root {
+  font-size: 1.05rem;
+  font-weight: 600;
   color: var(--muted);
 }
 
 .crumb-sep {
+  font-size: 1.05rem;
   color: var(--line-strong);
 }
 
 .crumb-cur {
+  font-size: 1.15rem;
   font-weight: 700;
+  line-height: 1.25;
   color: var(--fg);
 }
 
@@ -410,6 +415,21 @@ nav.tabs button[aria-selected="true"] .nav-cnt {
 .backup-indicator.is-warn:hover {
   background: #fef3c7;
   border-color: #f59e0b;
+}
+
+.backup-indicator .backup-sync-ic {
+  opacity: 0.72;
+  transition: opacity 0.15s ease;
+}
+
+.backup-indicator:hover .backup-sync-ic,
+.backup-indicator.is-syncing .backup-sync-ic {
+  opacity: 1;
+}
+
+.backup-indicator.is-syncing {
+  cursor: wait;
+  opacity: 0.85;
 }
 
 .storage-pill {
@@ -3291,3 +3311,336 @@ fieldset.cmt legend {
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
 }
+
+/* Google Drive Backup Subsection inside Settings .abox */
+.abox-divider {
+  border: 0;
+  border-top: 1px dashed var(--line-strong);
+  margin: 18px 0 16px;
+}
+
+.gdrive-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.gdrive-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.gdrive-title-wrap {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.gdrive-icon-badge {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid rgba(5, 150, 105, 0.25);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+.gdrive-title {
+  font-family: var(--f-display);
+  font-weight: 700;
+  font-size: 0.96rem;
+  color: var(--fg);
+  margin-bottom: 2px;
+}
+
+.gdrive-auth-box {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.gdrive-auth-info {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+/* Official Sign in with Google Material Button */
+.gsi-material-button {
+  -moz-user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  -webkit-appearance: none;
+  appearance: none;
+  background-color: #ffffff;
+  background-image: none;
+  border: 1px solid #747775;
+  -webkit-border-radius: 4px;
+  border-radius: 4px;
+  -webkit-box-sizing: border-box;
+  box-sizing: border-box;
+  color: #1f1f1f;
+  cursor: pointer;
+  font-family: 'Roboto', arial, sans-serif;
+  font-size: 14px;
+  height: 40px;
+  letter-spacing: 0.25px;
+  outline: none;
+  overflow: hidden;
+  padding: 0 12px;
+  position: relative;
+  text-align: center;
+  -webkit-transition: background-color 0.218s, border-color 0.218s, box-shadow 0.218s;
+  transition: background-color 0.218s, border-color 0.218s, box-shadow 0.218s;
+  vertical-align: middle;
+  white-space: nowrap;
+  width: auto;
+  max-width: 400px;
+  min-width: min-content;
+}
+
+.gsi-material-button .gsi-material-button-icon {
+  height: 20px;
+  margin-right: 12px;
+  min-width: 20px;
+  width: 20px;
+}
+
+.gsi-material-button .gsi-material-button-content-wrapper {
+  -webkit-align-items: center;
+  align-items: center;
+  display: flex;
+  -webkit-flex-direction: row;
+  flex-direction: row;
+  -webkit-flex-wrap: nowrap;
+  flex-wrap: nowrap;
+  height: 100%;
+  justify-content: space-between;
+  position: relative;
+  width: 100%;
+}
+
+.gsi-material-button .gsi-material-button-contents {
+  -webkit-flex-grow: 1;
+  flex-grow: 1;
+  font-family: 'Roboto', arial, sans-serif;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: top;
+}
+
+.gsi-material-button .gsi-material-button-state {
+  -webkit-transition: opacity 0.218s;
+  transition: opacity 0.218s;
+  bottom: 0;
+  left: 0;
+  opacity: 0;
+  position: absolute;
+  right: 0;
+  top: 0;
+}
+
+.gsi-material-button:disabled {
+  cursor: default;
+  background-color: #ffffff61;
+  border-color: #1f1f1f1f;
+}
+
+.gsi-material-button:disabled .gsi-material-button-contents,
+.gsi-material-button:disabled .gsi-material-button-icon {
+  opacity: 38%;
+}
+
+.gsi-material-button:not(:disabled):active .gsi-material-button-state,
+.gsi-material-button:not(:disabled):focus .gsi-material-button-state {
+  background-color: #303030;
+  opacity: 12%;
+}
+
+.gsi-material-button:not(:disabled):hover {
+  -webkit-box-shadow: 0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+  box-shadow: 0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+}
+
+.gsi-material-button:not(:disabled):hover .gsi-material-button-state {
+  background-color: #303030;
+  opacity: 8%;
+}
+
+.gdrive-connected {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.gdrive-user-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.gdrive-user-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.gdrive-user-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--ok);
+  background: var(--ok-soft);
+}
+
+.gdrive-user-email {
+  font-size: 0.9rem;
+  color: var(--fg);
+  overflow-wrap: anywhere;
+}
+
+.gdrive-folder-tag {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.gdrive-user-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.gdrive-user-actions .btn,
+.gdrive-file-acts .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gdrive-auto-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.88rem;
+  color: var(--fg);
+  cursor: pointer;
+  user-select: none;
+}
+
+.gdrive-auto-toggle input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.gdrive-files-box {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.gdrive-files-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  padding: 9px 14px;
+  background: var(--sunk);
+  border-bottom: 1px solid var(--line);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.gdrive-empty {
+  padding: 16px 14px;
+  font-size: 0.86rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+.gdrive-file-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.gdrive-file-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.gdrive-file-row:last-child {
+  border-bottom: 0;
+}
+
+.gdrive-file-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1 1 220px;
+}
+
+.gdrive-file-ic {
+  color: var(--accent);
+  flex: none;
+}
+
+.gdrive-file-text {
+  min-width: 0;
+}
+
+.gdrive-file-name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gdrive-file-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
