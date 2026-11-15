@@ -422,7 +422,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       fillSelect(s, [
         ...list.map((y): [string, string] => [
           String(y),
-          'ปีงบ ' + y + (y === CUR_FY ? ' (ปัจจุบัน)' : ''),
+          'ปีงบ ' + y,
         ]),
         ...(all ? ([['all', allLbl]] as Array<[string, string]>) : []),
       ]);
@@ -478,10 +478,10 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       sub: 'กำหนดชื่อหน่วยงาน ผู้ลงนาม สีของระบบ และจัดการไฟล์สำรองข้อมูลในเครื่อง',
     },
     install: {
-      en: 'PORTABLE HTML & APP INSTALL',
-      crumb: 'ไฟล์ .html / ติดตั้งแอป',
-      title: 'ไฟล์ .html และการติดตั้งแอป',
-      sub: 'ดาวน์โหลดระบบเป็นไฟล์ .html เดี่ยวสำหรับพกพา หรือติดตั้งเป็นโปรแกรมลงเครื่องคอมพิวเตอร์ (PWA)',
+      en: 'DESKTOP APP INSTALLATION',
+      crumb: 'ติดตั้งแอปลงเครื่อง',
+      title: 'ติดตั้งเป็นโปรแกรมบนเครื่องคอมพิวเตอร์',
+      sub: 'ติดตั้งระบบคุมวัสดุเป็นโปรแกรมลงเครื่องคอมพิวเตอร์ (PWA) เพื่อเปิดใช้งานได้สะดวกและทำงานแบบออฟไลน์ได้',
     },
   };
 

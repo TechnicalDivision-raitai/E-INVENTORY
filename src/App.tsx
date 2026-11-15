@@ -196,57 +196,6 @@ export default function App() {
     }
   };
 
-  const handleDownloadStandaloneHtml = async (withCurrentData: boolean) => {
-    try {
-      const res = await fetch('/assets/aistudio/KumWatsadu_5aecc5dc.html');
-      if (!res.ok) throw new Error('ไม่สามารถโหลดไฟล์ต้นฉบับได้');
-      let html = await res.text();
-
-      // Remove v7.0 badge, developer credit, and support tab/section from standalone HTML
-      html = html.replace(/<span class="ver"[^>]*>v7\.0<\/span>/g, '');
-      html = html.replace(/<div class="devcredit">[\s\S]*?<\/div>/g, '');
-      html = html.replace(/<button role="tab"[^>]*data-tab="sup"[^>]*>[\s\S]*?<\/button>/g, '');
-      html = html.replace(/<!-- สนับสนุน -->[\s\S]*?<\/section>/g, '');
-
-      if (withCurrentData) {
-        const rawDb = localStorage.getItem('kumwatsadu-db-v1') || '{}';
-        const lastBk = localStorage.getItem('kumwatsadu-db-v1:lastBackup') || '';
-        const seedScript = `<script>
-(function(){
-  try {
-    var existing = localStorage.getItem('kumwatsadu-db-v1');
-    if (!existing || existing === '{}' || confirm('พบข้อมูลที่แนบมากับไฟล์ .html นี้ ต้องการนำเข้าข้อมูลลงในเบราว์เซอร์เครื่องนี้หรือไม่?')) {
-      localStorage.setItem('kumwatsadu-db-v1', ${JSON.stringify(rawDb)});
-      ${lastBk ? `localStorage.setItem('kumwatsadu-db-v1:lastBackup', ${JSON.stringify(lastBk)});` : ''}
-    }
-  } catch(e) {}
-})();
-</script>`;
-        html = html.replace('</head>', `${seedScript}\n</head>`);
-      }
-
-      const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const d = new Date().toISOString().slice(0, 10);
-      a.download = withCurrentData ? `ระบบคุมวัสดุ_พร้อมข้อมูล_${d}.html` : 'ระบบคุมวัสดุ.html';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 4000);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (window as any).toast?.(
-        withCurrentData
-          ? 'ดาวน์โหลดไฟล์ .html พร้อมข้อมูลปัจจุบันแล้ว'
-          : 'ดาวน์โหลดไฟล์ ระบบคุมวัสดุ.html แล้ว'
-      );
-    } catch (err) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (window as any).toast?.('ดาวน์โหลดไม่สำเร็จ: ' + ((err as any)?.message || err));
-    }
-  };
-
   const handleLoadSampleData = async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = (window as any).localDb;
@@ -500,7 +449,7 @@ export default function App() {
             </button>
             <button role="tab" aria-selected="false" data-tab="install">
               <Monitor className="nav-ic" />
-              <span className="nav-lbl">ไฟล์ .html / ติดตั้งแอป</span>
+              <span className="nav-lbl">ติดตั้งแอปลงเครื่อง</span>
             </button>
           </nav>
         </aside>
@@ -1548,10 +1497,9 @@ export default function App() {
             </div>
           </section>
 
-          {/* ไฟล์ .html และการติดตั้งแอป */}
+          {/* ติดตั้งโปรแกรมลงเครื่องคอมพิวเตอร์ */}
           <section id="view-install" hidden>
             <InstallAndPortableSection
-              onDownloadStandaloneHtml={handleDownloadStandaloneHtml}
               onLoadSampleData={handleLoadSampleData}
               hasMaterials={materialCount > 0}
             />

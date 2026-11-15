@@ -1,24 +1,19 @@
 import React from 'react';
 import {
-  Download,
   Monitor,
-  FileCode,
   CheckCircle2,
   Database,
   Sparkles,
-  HardDriveDownload,
   FolderCheck,
 } from 'lucide-react';
 import { usePWAInstall, useOnlineStatus } from './usePWAInstall';
 
 interface InstallAndPortableProps {
-  onDownloadStandaloneHtml: (withCurrentData: boolean) => void;
   onLoadSampleData?: () => void;
   hasMaterials?: boolean;
 }
 
 export const InstallAndPortableSection: React.FC<InstallAndPortableProps> = ({
-  onDownloadStandaloneHtml,
   onLoadSampleData,
   hasMaterials,
 }) => {
@@ -51,50 +46,13 @@ export const InstallAndPortableSection: React.FC<InstallAndPortableProps> = ({
         </div>
       </div>
 
-      {/* Standalone HTML Download Card */}
-      <div className="card">
-        <div className="cardhead">
-          <div>
-            <h3 className="flex items-center gap-2">
-              <HardDriveDownload className="h-5 w-5 text-[var(--ink)]" />
-              <span>1. ดาวน์โหลดระบบเป็นไฟล์ .html เดี่ยว (พกพา / เปิดได้ทันที)</span>
-            </h3>
-            <span className="sub">
-              บันทึกเป็นไฟล์ .html ไฟล์เดียวจบ สามารถนำไปเก็บไว้ในโฟลเดอร์เครื่องคอมพิวเตอร์หรือแฟลชไดรฟ์แล้วดับเบิลคลิกเปิดใช้งานได้ทันที
-            </span>
-          </div>
-        </div>
-        <p className="hint">
-          เหมาะสำหรับนำไปเปิดใช้งานบนคอมพิวเตอร์เครื่องอื่น หรือเก็บเป็นไฟล์ระบบประจำเครื่องโดยไม่ต้องติดตั้งโปรแกรมเพิ่มเติม
-          แนะนำให้เปิดด้วยเบราว์เซอร์ <b>Google Chrome</b> หรือ <b>Microsoft Edge</b>
-        </p>
-        <div className="flex flex-wrap gap-3 pt-2">
-          <button
-            type="button"
-            onClick={() => onDownloadStandaloneHtml(true)}
-            className="btn primary flex items-center gap-2"
-          >
-            <Download className="h-4 w-4" />
-            <span>ดาวน์โหลดไฟล์ .html (พร้อมข้อมูลปัจจุบันในเครื่อง)</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onDownloadStandaloneHtml(false)}
-            className="btn flex items-center gap-2"
-          >
-            <FileCode className="h-4 w-4 text-[var(--ink)]" />
-            <span>ดาวน์โหลดไฟล์ .html (ไฟล์เปล่าสำหรับเริ่มใหม่)</span>
-          </button>
-        </div>
-      </div>
-
       {/* PWA Desktop Installation Card */}
       <div className="card">
         <div className="cardhead">
           <div>
             <h3 className="flex items-center gap-2">
               <Monitor className="h-5 w-5 text-[var(--ink)]" />
-              <span>2. ติดตั้งเป็นโปรแกรมบนเครื่องคอมพิวเตอร์ (PWA Desktop App)</span>
+              <span>1. ติดตั้งเป็นโปรแกรมบนเครื่องคอมพิวเตอร์ (PWA Desktop App)</span>
             </h3>
             <span className="sub">
               สร้างไอคอนโปรแกรมไว้บนหน้าจอ Desktop หรือแถบ Taskbar เพื่อเปิดใช้งานได้เหมือนโปรแกรมทั่วไป
@@ -164,7 +122,7 @@ export const InstallAndPortableSection: React.FC<InstallAndPortableProps> = ({
             <div>
               <h3 className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-[var(--ink)]" />
-                <span>3. ข้อมูลตัวอย่างสำหรับทดลองใช้งานระบบ</span>
+                <span>2. ข้อมูลตัวอย่างสำหรับทดลองใช้งานระบบ</span>
               </h3>
               <span className="sub">
                 สร้างรายการวัสดุตัวอย่าง 5 รายการ พร้อมใบรับวัสดุและใบเบิกตัวอย่าง เพื่อทดสอบการคำนวณ FIFO และรายงาน
