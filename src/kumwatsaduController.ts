@@ -162,8 +162,6 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
   }
 
   let L = new Map<string, any[]>();
-  let editIn: string | null = null;
-  let editOut: string | null = null;
   let editMat: string | null = null;
   let armed: string | null = null;
   let repKind = 'sum';
@@ -384,7 +382,6 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     return v;
   }
 
-  fillSelect($('inSrc'), Object.entries(SRC));
   if ($('fyStamp')) $('fyStamp').textContent = 'ปีงบประมาณ ' + CUR_FY;
 
   function sortFyCurrentFirst(years: number[]) {
@@ -770,14 +767,8 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
   function openDoc(id: string) {
     const mv = moves.find((m) => m.id === id);
     if (!mv) return;
-    if (mv.kind === 'in') {
-      showTab('in');
-      resetIn(mv);
-    } else {
-      showTab('out');
-      resetOut(mv);
-    }
-    window.scrollTo({ top: 0 });
+    showTab(mv.kind === 'in' ? 'in' : 'out');
+    openMoveDetail(mv);
   }
   document.addEventListener('click', (e) => {
     const li = (e.target as HTMLElement).closest('#feed [data-open]') as HTMLElement | null;
@@ -901,86 +892,12 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
         matLabel(m) + (withBal ? ' (เหลือ ' + fmtQ(current(m.id).q) + ' ' + m.unit + ')' : ''),
       ]);
   }
-  function addLine(kind: 'in' | 'out', l?: any) {
-    const box = $(kind + 'Lines');
-    if (!materials.length) {
-      toast('ยังไม่มีวัสดุในทะเบียน เพิ่มได้ที่แท็บ “ทะเบียนวัสดุ”');
-      return;
-    }
-    const row = document.createElement('div');
-    row.className = 'ln';
-    row.innerHTML =
-      kind === 'in'
-        ? '<select aria-label="วัสดุ"></select><input type="number" min="0" step="any" placeholder="จำนวน" aria-label="จำนวน"><input type="number" min="0" step="any" placeholder="ราคา/หน่วย" aria-label="ราคาต่อหน่วย"><span class="tot">0.00</span><button type="button" class="btn small" aria-label="ลบบรรทัด">ลบ</button>'
-        : '<select aria-label="วัสดุ"></select><input type="number" min="0" step="any" placeholder="จำนวน" aria-label="จำนวน"><span class="bal"></span><button type="button" class="btn small" aria-label="ลบบรรทัด">ลบ</button>';
-    const sel = row.querySelector('select') as HTMLSelectElement;
-    const ins = row.querySelectorAll('input');
-    fillSelect(sel, matOpts(false));
-    if (l) {
-      sel.value = l.mid;
-      ins[0].value = l.qty;
-      if (kind === 'in') ins[1].value = l.price ?? '';
-    } else if (kind === 'in') {
-      const last = lastPrice(sel.value);
-      if (last) ins[1].value = String(last);
-    }
-    const upd = () => {
-      if (kind === 'in') {
-        row.querySelector('.tot')!.textContent = fmtB(r2((+ins[0].value || 0) * (+ins[1].value || 0)));
-        sumIn();
-      } else {
-        const m = matById(sel.value),
-          avail = availFor(sel.value);
-        const balEl = row.querySelector('.bal')!;
-        balEl.textContent = m ? 'เหลือ ' + fmtQ(avail) + ' ' + m.unit : '';
-        balEl.className = 'bal' + ((+ins[0].value || 0) > avail ? ' out' : '');
-      }
-    };
-    sel.addEventListener('change', () => {
-      if (kind === 'in' && !ins[1].value) {
-        const p = lastPrice(sel.value);
-        if (p) ins[1].value = String(p);
-      }
-      upd();
-    });
-    ins.forEach((i) => i.addEventListener('input', upd));
-    row.querySelector('button')!.addEventListener('click', () => {
-      row.remove();
-      if (kind === 'in') sumIn();
-    });
-    box.appendChild(row);
-    upd();
-    if (!l) sel.focus();
-  }
   function lastPrice(mid: string) {
     const rows = (L.get(mid) || []).filter((r) => r.mv.kind === 'in' && r.price);
     return rows.length ? rows[rows.length - 1].price : '';
   }
   function oldQty(mv: any, mid: string) {
     return mv ? (mv.lines || []).filter((l: any) => l.mid === mid).reduce((s: number, l: any) => s + (+l.qty || 0), 0) : 0;
-  }
-  function availFor(mid: string) {
-    const mv = editOut && moves.find((x) => x.id === editOut);
-    return r2(current(mid).q + oldQty(mv, mid));
-  }
-  function readLines(kind: string) {
-    return [...$(kind + 'Lines').querySelectorAll('.ln')]
-      .map((r: HTMLElement) => {
-        const s = r.querySelector('select') as HTMLSelectElement;
-        const i = r.querySelectorAll('input');
-        const o: any = { mid: s.value, qty: +i[0].value || 0 };
-        if (kind === 'in') o.price = +i[1].value || 0;
-        return o;
-      })
-      .filter((l) => l.mid && l.qty > 0);
-  }
-  function clearLines(kind: string) {
-    $(kind + 'Lines')
-      ?.querySelectorAll('.ln')
-      .forEach((r: HTMLElement) => r.remove());
-  }
-  function sumIn() {
-    $('inSum').textContent = fmtB(readLines('in').reduce((s, l) => s + r2(l.qty * l.price), 0));
   }
   function nextSeq(kind: string, fy: number) {
     return moves.filter((m) => m.kind === kind && m.fy === fy).reduce((x, m) => Math.max(x, +m.seq || 0), 0) + 1;
@@ -996,130 +913,6 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     }
     return { seq: 0, fy, no: s };
   }
-
-  function resetIn(mv: any) {
-    editIn = mv ? mv.id : null;
-    msg('inMsg', '');
-    delete $('inNo').dataset.touched;
-    $('inTitle').textContent = mv ? 'แก้ไขใบรับเลขที่ ' + mv.no : 'บันทึกรับวัสดุเข้าคลัง';
-    $('inDel').hidden = !mv;
-    const d = mv?.date || todayISO();
-    $('inDate').value = d;
-    $('inNo').value = mv ? mv.no : fmtNo(nextSeq('in', fyOf(d)), fyOf(d));
-    $('inSrc').value = mv?.src || 'purchase';
-    $('inInspect').value = mv?.inspectDate || '';
-    $('inPo').value = mv?.poNo || '';
-    $('inVendor').value = mv?.vendor || '';
-    $('inInvoice').value = mv?.invoiceNo || '';
-    $('inNote').value = mv?.note || '';
-    clearLines('in');
-    if (mv) (mv.lines || []).forEach((l: any) => addLine('in', l));
-    else if (materials.length) addLine('in');
-    sumIn();
-    srcUi();
-  }
-  function srcUi() {
-    const o = $('inSrc').value === 'opening';
-    $('inPoLbl').hidden = o;
-    $('inInspectLbl').hidden = o;
-    $('inInspect').required = !o;
-    $('inVendor').required = !o;
-    $('inVendorReq').hidden = o;
-    $('inVendorTxt').textContent = o ? 'ยกมาจาก' : 'ผู้ขาย / รับจาก';
-  }
-  $('inSrc')?.addEventListener('change', srcUi);
-  $('inDate')?.addEventListener('change', () => {
-    if (editIn) return;
-    const fy = fyOf($('inDate').value);
-    if (fy) $('inNo').value = fmtNo(nextSeq('in', fy), fy);
-  });
-  $('inAdd')?.addEventListener('click', () => addLine('in'));
-  $('inReset')?.addEventListener('click', () => resetIn(null));
-  $('inForm')?.addEventListener('submit', async (e: Event) => {
-    e.preventDefault();
-    if (!db) return msg('inMsg', 'เบราว์เซอร์นี้บันทึกข้อมูลไม่ได้', 1);
-    const lines = readLines('in');
-    if (!lines.length) return msg('inMsg', 'เพิ่มรายการวัสดุอย่างน้อย 1 รายการ และใส่จำนวน', 1);
-    const date = $('inDate').value,
-      n = parseNo($('inNo').value, 'in', date),
-      opening = $('inSrc').value === 'opening';
-    if (!opening && !$('inVendor').value.trim()) {
-      $('inVendor').focus();
-      return msg('inMsg', 'กรอกชื่อผู้ขาย / รับจาก', 1);
-    }
-    if (!opening && !$('inInspect').value) {
-      $('inInspect').focus();
-      return msg('inMsg', 'กรอกวันที่ตรวจรับ', 1);
-    }
-    if (moves.some((m) => m.kind === 'in' && m.no === n.no && m.id !== editIn))
-      return msg('inMsg', 'เลขที่ใบรับ ' + n.no + ' ซ้ำกับใบที่มีอยู่แล้ว', 1);
-    const old = editIn && moves.find((x) => x.id === editIn);
-    if (old) {
-      for (const l of old.lines || []) {
-        const after = r2(
-          current(l.mid).q -
-            oldQty(old, l.mid) +
-            lines.filter((x) => x.mid === l.mid).reduce((s, x) => s + x.qty, 0)
-        );
-        if (after < 0) {
-          const m = matById(l.mid);
-          return msg(
-            'inMsg',
-            `แก้ไม่ได้: ${m?.name || 'วัสดุ'} ถูกเบิกไปแล้ว ยอดจะติดลบ ${fmtQ(-after)} ${m?.unit || ''}`,
-            1
-          );
-        }
-      }
-    }
-    const now = new Date().toISOString();
-    const body = {
-      kind: 'in',
-      no: n.no,
-      seq: n.seq,
-      fy: n.fy,
-      date,
-      src: $('inSrc').value,
-      inspectDate: opening ? '' : $('inInspect').value,
-      poNo: $('inPo').value.trim(),
-      vendor: $('inVendor').value.trim(),
-      invoiceNo: $('inInvoice').value.trim(),
-      note: $('inNote').value.trim(),
-      lines,
-      createdAt: old?.createdAt || now,
-      updatedAt: now,
-    };
-    const btn = $('inSave');
-    btn.disabled = true;
-    msg('inMsg', 'กำลังบันทึก…');
-    try {
-      const id = editIn || db.collection('moves').doc().id;
-      await db.doc('moves/' + id).set(body);
-      toast('บันทึกใบรับ ' + n.no + ' แล้ว');
-      resetIn(null);
-    } catch (err) {
-      msg('inMsg', errText(err), 1);
-    } finally {
-      btn.disabled = false;
-    }
-  });
-  $('inDel')?.addEventListener('click', async () => {
-    const mv = moves.find((x) => x.id === editIn);
-    if (!mv) return;
-    for (const l of mv.lines || []) {
-      if (r2(current(l.mid).q - oldQty(mv, l.mid)) < 0) {
-        const m = matById(l.mid);
-        return msg('inMsg', `ลบไม่ได้: ${m?.name || 'วัสดุ'} ถูกเบิกไปแล้ว ยอดจะติดลบ ลบใบเบิกที่เกี่ยวข้องก่อน`, 1);
-      }
-    }
-    if (!confirmClick('delin', $('inDel'), 'กดอีกครั้งเพื่อลบใบรับ')) return;
-    try {
-      await db.doc('moves/' + mv.id).delete();
-      toast('ลบใบรับ ' + mv.no + ' แล้ว');
-      resetIn(null);
-    } catch (err) {
-      msg('inMsg', errText(err), 1);
-    }
-  });
   const ICO_EYE =
     '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
   const ICO_PRINT =
@@ -1130,12 +923,14 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
 
   let modalMvId: string | null = null;
+  let modalFormKind: 'in' | 'out' | null = null;
   let modalOpenedFromView = false;
 
   function closeMoveDetail() {
     const mod = $('mvDetailModal');
     if (mod) mod.hidden = true;
     modalMvId = null;
+    modalFormKind = null;
     modalOpenedFromView = false;
   }
   $('mvDetailClose')?.addEventListener('click', closeMoveDetail);
@@ -1151,6 +946,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
   function openMoveDetail(mv: any) {
     if (!mv) return;
     modalMvId = mv.id;
+    modalFormKind = mv.kind === 'out' ? 'out' : 'in';
     modalOpenedFromView = false;
     const isOut = mv.kind === 'out';
     const titleEl = $('mvDetailTitle');
@@ -1260,57 +1056,96 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     $('mvDetailModal').hidden = false;
   }
 
-  function openMoveEdit(mv: any, fromView = false) {
-    if (!mv) return;
-    if (!canWrite) return openMoveDetail(mv);
-    modalMvId = mv.id;
-    modalOpenedFromView = fromView;
-    const isOut = mv.kind === 'out';
+  function openMoveForm(kind: 'in' | 'out', mv: any | null, fromView = false) {
+    if (!canWrite) {
+      if (mv) return openMoveDetail(mv);
+      toast('บัญชีนี้ดูได้อย่างเดียว ไม่มีสิทธิ์บันทึก');
+      return;
+    }
+    const isNew = !mv;
+    const isOut = kind === 'out';
+    modalMvId = mv ? mv.id : null;
+    modalFormKind = kind;
+    modalOpenedFromView = !isNew && fromView;
+
     const titleEl = $('mvDetailTitle');
     const subEl = $('mvDetailSub');
     const bodyEl = $('mvDetailBody');
     const footEl = $('mvDetailFoot');
     if (!bodyEl || !footEl) return;
 
+    const fySelVal = $(isOut ? 'outFy' : 'inFy')?.value;
+    let defaultDate = todayISO();
+    if (isNew && fySelVal && fySelVal !== 'all') {
+      const targetFy = +fySelVal;
+      if (targetFy && fyOf(defaultDate) !== targetFy) {
+        defaultDate = targetFy === CUR_FY ? todayISO() : targetFy - 544 + '-10-01';
+      }
+    }
+    const docDate = mv?.date || defaultDate;
+    const docNo = mv ? mv.no || '' : fmtNo(nextSeq(kind, fyOf(docDate)), fyOf(docDate));
+    const docSrc = mv?.src || 'purchase';
+    const docInspect = mv ? mv.inspectDate || '' : '';
+
     if (titleEl) {
-      titleEl.textContent = (isOut ? 'แก้ไขใบเบิกวัสดุ เลขที่ ' : 'แก้ไขใบรับวัสดุ เลขที่ ') + (mv.no || '');
+      if (isNew) {
+        titleEl.textContent = isOut ? 'ออกใบเบิกวัสดุ' : 'บันทึกรับวัสดุเข้าคลัง';
+      } else {
+        titleEl.textContent = (isOut ? 'แก้ไขใบเบิกวัสดุ เลขที่ ' : 'แก้ไขใบรับวัสดุ เลขที่ ') + (mv.no || '');
+      }
     }
     if (subEl) {
-      subEl.textContent = 'แก้ไขรายละเอียดและรายการวัสดุทั้งหมดในหน้านี้ แล้วกดบันทึกการแก้ไข';
+      if (isNew) {
+        subEl.textContent = isOut
+          ? 'บันทึกแล้วตัดยอดคงเหลืออัตโนมัติ และสามารถสั่งพิมพ์หรือส่งออกเป็นไฟล์ Word ได้ทันที'
+          : 'ราคาต่อหน่วยใช้คิดมูลค่าในบัญชีวัสดุตามลำดับรับเข้า (FIFO)';
+      } else {
+        subEl.textContent = 'แก้ไขรายละเอียดและรายการวัสดุทั้งหมดในหน้านี้ แล้วกดบันทึกการแก้ไข';
+      }
     }
 
     const headerFormHtml = isOut
       ? `<div class="mv-edit-section"><div class="grid">
-          <label class="f c4">เลขที่ใบเบิก<input id="mdNo" value="${esc(mv.no || '')}" /></label>
+          <label class="f c4">เลขที่ใบเบิก<input id="mdNo" placeholder="001/2570" value="${esc(docNo)}" /></label>
           <label class="f c4">วันที่เบิก <span class="req">*</span><input id="mdDate" type="date" value="${esc(
-            mv.date || todayISO()
+            docDate
           )}" /></label>
-          <label class="f c4">ผู้เบิก <span class="req">*</span><input id="mdReq" list="peopleList" value="${esc(
-            mv.requester || ''
+          <label class="f c4">ผู้เบิก <span class="req">*</span><input id="mdReq" list="peopleList" placeholder="ชื่อ-นามสกุล ผู้ขอเบิก" value="${esc(
+            mv?.requester || ''
           )}" /></label>
-          <label class="f c4">ตำแหน่ง<input id="mdPos" list="posList" value="${esc(mv.reqPos || '')}" /></label>
-          <label class="f c8">เพื่อใช้ในงาน <span class="req">*</span><input id="mdPurpose" value="${esc(
-            mv.purpose || ''
+          <label class="f c4">ตำแหน่ง<input id="mdPos" list="posList" placeholder="ตำแหน่งของผู้เบิก" value="${esc(
+            mv?.reqPos || ''
           )}" /></label>
-          <label class="f c12">หมายเหตุ<input id="mdNote" value="${esc(mv.note || '')}" /></label>
+          <label class="f c8">เพื่อใช้ในงาน <span class="req">*</span><input id="mdPurpose" placeholder="เช่น ซ่อมแซมถนนลาดยาง หมู่ 3 ตามคำร้องเลขรับ 012/2570" value="${esc(
+            mv?.purpose || ''
+          )}" /></label>
+          <label class="f c12">หมายเหตุ<input id="mdNote" placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)" value="${esc(
+            mv?.note || ''
+          )}" /></label>
         </div></div>`
       : `<div class="mv-edit-section"><div class="grid">
-          <label class="f c4">ประเภทการรับ<select id="mdSrc">${Object.entries(SRC)
-            .map(([k, v]) => `<option value="${esc(k)}"${k === mv.src ? ' selected' : ''}>${esc(v)}</option>`)
+          <label class="f c4">ที่มา<select id="mdSrc">${Object.entries(SRC)
+            .map(([k, v]) => `<option value="${esc(k)}"${k === docSrc ? ' selected' : ''}>${esc(v)}</option>`)
             .join('')}</select></label>
-          <label class="f c4">เลขที่ใบรับ<input id="mdNo" value="${esc(mv.no || '')}" /></label>
+          <label class="f c4">เลขที่ใบรับ<input id="mdNo" placeholder="001/2570" value="${esc(docNo)}" /></label>
           <label class="f c4">วันที่รับ <span class="req">*</span><input id="mdDate" type="date" value="${esc(
-            mv.date || todayISO()
+            docDate
           )}" /></label>
-          <label class="f c6">ผู้ขาย / รับจาก <span class="req" id="mdVendorReq">*</span><input id="mdVendor" value="${esc(
-            mv.vendor || ''
+          <label class="f c6"><span id="mdVendorTxt">ผู้ขาย / รับจาก</span> <span class="req" id="mdVendorReq">*</span><input id="mdVendor" placeholder="ชื่อร้านค้า / หน่วยงาน" value="${esc(
+            mv?.vendor || ''
           )}" /></label>
           <label class="f c3" id="mdInspectLbl">วันที่ตรวจรับ <span class="req">*</span><input id="mdInspect" type="date" value="${esc(
-            mv.inspectDate || mv.date || todayISO()
+            docInspect
           )}" /></label>
-          <label class="f c3" id="mdPoLbl">เลขที่ใบสั่งซื้อ/จ้าง<input id="mdPo" value="${esc(mv.poNo || '')}" /></label>
-          <label class="f c4">เลขที่ใบส่งของ<input id="mdInv" value="${esc(mv.invoiceNo || '')}" /></label>
-          <label class="f c8">หมายเหตุ<input id="mdNote" value="${esc(mv.note || '')}" /></label>
+          <label class="f c3" id="mdPoLbl">เลขที่ใบสั่งซื้อ/สัญญา<input id="mdPo" placeholder="เช่น 45/2570" value="${esc(
+            mv?.poNo || ''
+          )}" /></label>
+          <label class="f c4">เลขที่ใบส่งของ/ใบกำกับ<input id="mdInv" placeholder="ระบุเลขที่ใบส่งของ (ถ้ามี)" value="${esc(
+            mv?.invoiceNo || ''
+          )}" /></label>
+          <label class="f c8">หมายเหตุ<input id="mdNote" placeholder="เช่น โครงการซ่อมแซมถนนในตำบล" value="${esc(
+            mv?.note || ''
+          )}" /></label>
         </div></div>`;
 
     const linesSectionHtml = `<div class="mv-edit-section">
@@ -1324,7 +1159,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       </div>
       <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-top:10px">
         <button type="button" class="btn small" id="mdAddLine">+ เพิ่มรายการวัสดุ</button>
-        ${isOut ? '' : '<div class="linesum">รวมทั้งสิ้น <span id="mdInSum">0.00</span> บาท</div>'}
+        ${isOut ? '' : '<div class="linesum">รวมเป็นเงินทั้งสิ้น <span id="mdInSum">0.00</span> บาท</div>'}
       </div>
       <div class="mv-edit-msg" id="mdEditMsg"></div>
     </div>`;
@@ -1340,9 +1175,9 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       }, 0);
       $('mdInSum').textContent = fmtB(tot);
     };
-    const addMdLine = (l?: any) => {
+    const addMdLine = (l?: any, focusNew = false) => {
       if (!materials.length) {
-        toast('ยังไม่มีวัสดุในทะเบียน');
+        toast('ยังไม่มีวัสดุในทะเบียน เพิ่มได้ที่แท็บ “ทะเบียนวัสดุ”');
         return;
       }
       const row = document.createElement('div');
@@ -1387,10 +1222,14 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       });
       mdLinesBox.appendChild(row);
       upd();
+      if (focusNew) sel.focus();
     };
 
-    (mv.lines || []).forEach((l: any) => addMdLine(l));
-    if (!(mv.lines || []).length && materials.length) addMdLine();
+    if (mv && (mv.lines || []).length) {
+      mv.lines.forEach((l: any) => addMdLine(l, false));
+    } else if (materials.length) {
+      addMdLine(undefined, false);
+    }
 
     const syncMdSrc = () => {
       if (isOut || !$('mdSrc')) return;
@@ -1398,18 +1237,57 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       if ($('mdPoLbl')) $('mdPoLbl').hidden = opening;
       if ($('mdInspectLbl')) $('mdInspectLbl').hidden = opening;
       if ($('mdVendorReq')) $('mdVendorReq').hidden = opening;
+      if ($('mdVendorTxt')) $('mdVendorTxt').textContent = opening ? 'ยกมาจาก' : 'ผู้ขาย / รับจาก';
     };
     syncMdSrc();
     $('mdSrc')?.addEventListener('change', syncMdSrc);
-    $('mdAddLine')?.addEventListener('click', () => addMdLine());
+    $('mdAddLine')?.addEventListener('click', () => addMdLine(undefined, true));
 
-    footEl.innerHTML =
-      `<button type="button" class="btn danger" id="mdDelBtn">${isOut ? 'ลบใบเบิกนี้ (คืนคลัง)' : 'ลบใบรับนี้'}</button>` +
-      `<span class="sp"></span>` +
-      `<button type="button" class="btn" id="mdCancelBtn">${fromView ? 'กลับหน้ารายละเอียด' : 'ยกเลิก'}</button>` +
-      `<button type="button" class="btn primary" id="mdSaveBtn">บันทึกการแก้ไข</button>`;
+    $('mdNo')?.addEventListener('input', () => {
+      if ($('mdNo')) $('mdNo').dataset.touched = '1';
+    });
+    if (isNew) {
+      $('mdDate')?.addEventListener('change', () => {
+        if ($('mdNo')?.dataset.touched) return;
+        const fy = fyOf($('mdDate')?.value);
+        if (fy && $('mdNo')) $('mdNo').value = fmtNo(nextSeq(kind, fy), fy);
+      });
+    }
+    if (isOut) {
+      $('mdReq')?.addEventListener('change', () => {
+        if ($('mdPos')?.value) return;
+        const reqVal = ($('mdReq')?.value || '').trim();
+        if (!reqVal) return;
+        const p = moves
+          .filter((m) => m.kind === 'out' && m.requester === reqVal && m.reqPos)
+          .sort(mvSort)
+          .pop();
+        if (p && $('mdPos')) $('mdPos').value = p.reqPos;
+      });
+    }
+
+    const footParts: string[] = [];
+    if (!isNew) {
+      footParts.push(`<button type="button" class="btn danger" id="mdDelBtn">${isOut ? 'ลบใบเบิกนี้ (คืนคลัง)' : 'ลบใบรับนี้'}</button>`);
+    }
+    footParts.push('<span class="sp"></span>');
+    footParts.push(`<button type="button" class="btn" id="mdCancelBtn">${!isNew && fromView ? 'กลับหน้ารายละเอียด' : 'ยกเลิก'}</button>`);
+    if (isNew && isOut) {
+      footParts.push('<button type="button" class="btn" id="mdSaveBtn">บันทึกใบเบิก</button>');
+      footParts.push('<button type="button" class="btn primary" id="mdSavePrintBtn">บันทึกและพิมพ์ใบเบิก</button>');
+    } else if (isNew) {
+      footParts.push('<button type="button" class="btn primary" id="mdSaveBtn">บันทึกรับเข้า</button>');
+    } else {
+      footParts.push('<button type="button" class="btn primary" id="mdSaveBtn">บันทึกการแก้ไข</button>');
+    }
+    footEl.innerHTML = footParts.join('');
 
     $('mvDetailModal').hidden = false;
+  }
+
+  function openMoveEdit(mv: any, fromView = false) {
+    if (!mv) return;
+    openMoveForm(mv.kind === 'out' ? 'out' : 'in', mv, fromView);
   }
 
   $('mvDetailFoot')?.addEventListener('click', async (e: Event) => {
@@ -1460,7 +1338,6 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
         if (!confirmClick('delmdin', delBtn, 'กดอีกครั้งเพื่อลบใบรับ')) return;
         try {
           await db.doc('moves/' + mv.id).delete();
-          if (editIn === mv.id) resetIn(null);
           toast('ลบใบรับ ' + mv.no + ' แล้ว');
           closeMoveDetail();
         } catch (err) {
@@ -1470,7 +1347,6 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
         if (!confirmClick('delmdout', delBtn, 'กดอีกครั้ง: ลบใบเบิกและคืนวัสดุเข้าคลัง')) return;
         try {
           await db.doc('moves/' + mv.id).delete();
-          if (editOut === mv.id) resetOut(null);
           toast('ลบใบเบิก ' + mv.no + ' แล้ว วัสดุคืนเข้าคลัง');
           closeMoveDetail();
         } catch (err) {
@@ -1479,10 +1355,12 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       }
       return;
     }
-    if (t.closest('#mdSaveBtn')) {
+    const wantPrint = !!t.closest('#mdSavePrintBtn');
+    if (t.closest('#mdSaveBtn') || wantPrint) {
+      if (!db) return msg('mdEditMsg', 'เบราว์เซอร์นี้บันทึกข้อมูลไม่ได้', 1);
       const mv = modalMvId ? moves.find((m) => m.id === modalMvId) : null;
-      if (!mv || !db) return;
-      const isOut = mv.kind === 'out';
+      const kind: 'in' | 'out' = mv ? (mv.kind === 'out' ? 'out' : 'in') : modalFormKind || 'in';
+      const isOut = kind === 'out';
       const mdLinesBox = $('mdEditLines');
       const lines = [...(mdLinesBox?.querySelectorAll('.ln') || [])]
         .map((r: any) => {
@@ -1497,9 +1375,9 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
 
       const date = $('mdDate')?.value;
       if (!date) return msg('mdEditMsg', 'ระบุวันที่เอกสาร', 1);
-      const n = parseNo($('mdNo')?.value, mv.kind, date);
-      if (moves.some((m) => m.kind === mv.kind && m.no === n.no && m.id !== mv.id)) {
-        return msg('mdEditMsg', `เลขที่เอกสาร ${n.no} ซ้ำกับใบที่มีอยู่แล้ว`, 1);
+      const n = parseNo($('mdNo')?.value, kind, date);
+      if (moves.some((m) => m.kind === kind && m.no === n.no && m.id !== mv?.id)) {
+        return msg('mdEditMsg', `เลขที่${isOut ? 'ใบเบิก' : 'ใบรับ'} ${n.no} ซ้ำกับใบที่มีอยู่แล้ว`, 1);
       }
 
       const now = new Date().toISOString();
@@ -1517,15 +1395,17 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
           $('mdInspect')?.focus();
           return msg('mdEditMsg', 'กรอกวันที่ตรวจรับ', 1);
         }
-        for (const l of mv.lines || []) {
-          const after = r2(
-            current(l.mid).q -
-              oldQty(mv, l.mid) +
-              lines.filter((x) => x.mid === l.mid).reduce((s, x) => s + x.qty, 0)
-          );
-          if (after < 0) {
-            const m = matById(l.mid);
-            return msg('mdEditMsg', `แก้ไม่ได้: ${m?.name || 'วัสดุ'} ถูกเบิกไปแล้ว ยอดจะติดลบ ${fmtQ(-after)} ${m?.unit || ''}`, 1);
+        if (mv) {
+          for (const l of mv.lines || []) {
+            const after = r2(
+              current(l.mid).q -
+                oldQty(mv, l.mid) +
+                lines.filter((x) => x.mid === l.mid).reduce((s, x) => s + x.qty, 0)
+            );
+            if (after < 0) {
+              const m = matById(l.mid);
+              return msg('mdEditMsg', `แก้ไม่ได้: ${m?.name || 'วัสดุ'} ถูกเบิกไปแล้ว ยอดจะติดลบ ${fmtQ(-after)} ${m?.unit || ''}`, 1);
+            }
           }
         }
         body = {
@@ -1541,7 +1421,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
           invoiceNo: ($('mdInv')?.value || '').trim(),
           note: ($('mdNote')?.value || '').trim(),
           lines,
-          createdAt: mv.createdAt || now,
+          createdAt: mv?.createdAt || now,
           updatedAt: now,
         };
       } else {
@@ -1575,36 +1455,42 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
           purpose,
           note: ($('mdNote')?.value || '').trim(),
           lines,
-          createdAt: mv.createdAt || now,
+          createdAt: mv?.createdAt || now,
           updatedAt: now,
         };
       }
 
       const saveBtn = $('mdSaveBtn');
+      const savePrintBtn = $('mdSavePrintBtn');
       if (saveBtn) saveBtn.disabled = true;
+      if (savePrintBtn) savePrintBtn.disabled = true;
       msg('mdEditMsg', 'กำลังบันทึก…');
       try {
-        await db.doc('moves/' + mv.id).set(body);
-        if (!isOut && editIn === mv.id) resetIn(null);
-        if (isOut && editOut === mv.id) resetOut(null);
-        toast((isOut ? 'บันทึกการแก้ไขใบเบิก ' : 'บันทึกการแก้ไขใบรับ ') + n.no + ' แล้ว');
-        const updatedMv = moves.find((m) => m.id === mv.id) || { ...body, id: mv.id };
-        openMoveDetail(updatedMv);
+        const id = mv ? mv.id : db.collection('moves').doc().id;
+        await db.doc('moves/' + id).set(body);
+        if (mv) {
+          toast((isOut ? 'บันทึกการแก้ไขใบเบิก ' : 'บันทึกการแก้ไขใบรับ ') + n.no + ' แล้ว');
+          const updatedMv = moves.find((m) => m.id === id) || { ...body, id };
+          openMoveDetail(updatedMv);
+        } else {
+          toast(isOut ? 'บันทึกใบเบิก ' + n.no + ' และตัดยอดคงเหลือแล้ว' : 'บันทึกใบรับ ' + n.no + ' แล้ว');
+          closeMoveDetail();
+          if (wantPrint && isOut) {
+            openPrint({ ...body, id });
+            doPrintSlip(true);
+          }
+        }
       } catch (err) {
         msg('mdEditMsg', errText(err), 1);
       } finally {
         if (saveBtn) saveBtn.disabled = false;
+        if (savePrintBtn) savePrintBtn.disabled = false;
       }
     }
   });
 
   function renderIn() {
-    if (!$('inLines').querySelector('.ln') && !editIn && materials.length) addLine('in');
-    if (!editIn) {
-      const fy = fyOf($('inDate').value || todayISO());
-      if (!$('inDate').value) $('inDate').value = todayISO();
-      if (!$('inNo').dataset.touched) $('inNo').value = fmtNo(nextSeq('in', fy), fy);
-    }
+    if ($('btnNewIn')) $('btnNewIn').hidden = !canWrite;
     const q = $('inQ').value.trim().toLowerCase(),
       fy = $('inFy').value;
     const rows = moves
@@ -1612,15 +1498,16 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       .filter(
         (m) =>
           !q ||
-          [m.no, m.vendor, m.poNo, m.invoiceNo, m.note, linesText(m)].join(' ').toLowerCase().includes(q)
+          [m.no, SRC[m.src], m.vendor, m.poNo, m.invoiceNo, m.note, linesText(m)].join(' ').toLowerCase().includes(q)
       )
       .sort((a, b) => mvSort(b, a));
     $('inRows').innerHTML = rows
       .map(
         (m) => `<tr><td class="no col-no">${esc(m.no)}</td><td class="col-date">${esc(thDate(m.date))}</td>
-    <td class="col-party">${esc(m.vendor || '—')}<div class="sub">${esc(SRC[m.src] || '')}${
-          m.invoiceNo ? ' · ใบส่งของ ' + esc(m.invoiceNo) : ''
-        }</div></td><td class="col-po">${esc(m.poNo || '—')}</td>
+    <td class="col-src">${esc(SRC[m.src] || '—')}</td>
+    <td class="col-party">${esc(m.vendor || '—')}${
+          m.invoiceNo ? `<div class="sub">ใบส่งของ ${esc(m.invoiceNo)}</div>` : ''
+        }</td><td class="col-po">${esc(m.poNo || '—')}</td>
     <td class="num col-val">${fmtB(moveValue(m))}</td>
     <td class="col-act"><div class="rowact-stack cols-1"><button type="button" class="btn icon-btn" data-viewmv="${esc(
       m.id
@@ -1637,23 +1524,11 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     em.hidden = !!rows.length;
     em.innerHTML = moves.some((m) => m.kind === 'in')
       ? '<b>ไม่พบใบรับตามเงื่อนไข</b>ลองเปลี่ยนปีงบหรือคำค้นหา'
-      : '<b>ยังไม่มีการรับวัสดุ</b>บันทึกยอดยกมาหรือการรับจากการจัดซื้อด้วยฟอร์มด้านบน';
+      : '<b>ยังไม่มีการรับวัสดุ</b>บันทึกยอดยกมาหรือการรับจากการจัดซื้อด้วยปุ่ม “+ รับเข้าวัสดุ” ด้านบน';
   }
-  $('inNo')?.addEventListener('input', () => ($('inNo').dataset.touched = 1));
   $('inQ')?.addEventListener('input', renderIn);
-  $('inFy')?.addEventListener('change', () => {
-    const fyVal = $('inFy').value;
-    if (!editIn && fyVal !== 'all') {
-      const targetFy = +fyVal;
-      if (targetFy && fyOf($('inDate').value) !== targetFy) {
-        $('inDate').value = targetFy === CUR_FY ? todayISO() : targetFy - 544 + '-10-01';
-      }
-      if (targetFy && !$('inNo').dataset.touched) {
-        $('inNo').value = fmtNo(nextSeq('in', targetFy), targetFy);
-      }
-    }
-    renderIn();
-  });
+  $('inFy')?.addEventListener('change', renderIn);
+  $('btnNewIn')?.addEventListener('click', () => openMoveForm('in', null, false));
   $('inRows')?.addEventListener('click', (e: Event) => {
     const v = (e.target as HTMLElement).closest('[data-viewmv]') as HTMLElement | null;
     if (v) {
@@ -1666,117 +1541,12 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     }
   });
 
-  function resetOut(mv: any) {
-    editOut = mv ? mv.id : null;
-    msg('outMsg', '');
-    delete $('outNo').dataset.touched;
-    $('outTitle').textContent = mv ? 'แก้ไขใบเบิกเลขที่ ' + mv.no : 'ออกใบเบิกวัสดุ';
-    $('outDel').hidden = !mv;
-    const d = mv?.date || todayISO();
-    $('outDate').value = d;
-    $('outNo').value = mv ? mv.no : fmtNo(nextSeq('out', fyOf(d)), fyOf(d));
-    $('outReq').value = mv?.requester || '';
-    $('outPos').value = mv?.reqPos || '';
-    $('outPurpose').value = mv?.purpose || '';
-    $('outNote').value = mv?.note || '';
-    clearLines('out');
-    if (mv) (mv.lines || []).forEach((l: any) => addLine('out', l));
-    else if (materials.length) addLine('out');
-  }
-  $('outDate')?.addEventListener('change', () => {
-    if (editOut) return;
-    const fy = fyOf($('outDate').value);
-    if (fy) $('outNo').value = fmtNo(nextSeq('out', fy), fy);
-  });
-  $('outAdd')?.addEventListener('click', () => addLine('out'));
-  $('outReset')?.addEventListener('click', () => resetOut(null));
-  $('outReq')?.addEventListener('change', () => {
-    if ($('outPos').value) return;
-    const p = moves
-      .filter((m) => m.kind === 'out' && m.requester === $('outReq').value.trim() && m.reqPos)
-      .sort(mvSort)
-      .pop();
-    if (p) $('outPos').value = p.reqPos;
-  });
-  $('outForm')?.addEventListener('submit', async (e: SubmitEvent) => {
-    e.preventDefault();
-    const print = (e.submitter as HTMLElement | null)?.dataset.print === '1';
-    if (!db) return msg('outMsg', 'เบราว์เซอร์นี้บันทึกข้อมูลไม่ได้', 1);
-    const lines = readLines('out');
-    if (!lines.length) return msg('outMsg', 'เพิ่มรายการวัสดุอย่างน้อย 1 รายการ และใส่จำนวน', 1);
-    const need: Record<string, number> = {};
-    lines.forEach((l) => (need[l.mid] = (need[l.mid] || 0) + l.qty));
-    for (const mid in need) {
-      const a = availFor(mid);
-      if (need[mid] > a + 1e-9) {
-        const m = matById(mid);
-        return msg('outMsg', `${m?.name || 'วัสดุ'} คงเหลือ ${fmtQ(a)} ${m?.unit || ''} ไม่พอเบิก ${fmtQ(need[mid])}`, 1);
-      }
-    }
-    const date = $('outDate').value,
-      n = parseNo($('outNo').value, 'out', date);
-    if (moves.some((m) => m.kind === 'out' && m.no === n.no && m.id !== editOut))
-      return msg('outMsg', 'เลขที่ใบเบิก ' + n.no + ' ซ้ำกับใบที่มีอยู่แล้ว', 1);
-    const old = editOut && moves.find((x) => x.id === editOut),
-      now = new Date().toISOString();
-    const body = {
-      kind: 'out',
-      no: n.no,
-      seq: n.seq,
-      fy: n.fy,
-      date,
-      requester: $('outReq').value.trim(),
-      reqPos: $('outPos').value.trim(),
-      purpose: $('outPurpose').value.trim(),
-      note: $('outNote').value.trim(),
-      lines,
-      createdAt: old?.createdAt || now,
-      updatedAt: now,
-    };
-    const btns = $('outForm').querySelectorAll('button[type=submit]');
-    btns.forEach((b: HTMLButtonElement) => (b.disabled = true));
-    msg('outMsg', 'กำลังบันทึก…');
-    try {
-      const id = editOut || db.collection('moves').doc().id;
-      await db.doc('moves/' + id).set(body);
-      toast('บันทึกใบเบิก ' + n.no + ' และตัดยอดคงเหลือแล้ว');
-      resetOut(null);
-      if (print) {
-        openPrint({ ...body, id });
-        doPrintSlip(true);
-      }
-    } catch (err) {
-      msg('outMsg', errText(err), 1);
-    } finally {
-      btns.forEach((b: HTMLButtonElement) => (b.disabled = false));
-    }
-  });
-  $('outDel')?.addEventListener('click', async () => {
-    const mv = moves.find((x) => x.id === editOut);
-    if (!mv) return;
-    if (!confirmClick('delout', $('outDel'), 'กดอีกครั้ง: ลบใบเบิกและคืนวัสดุเข้าคลัง')) return;
-    try {
-      await db.doc('moves/' + mv.id).delete();
-      toast('ลบใบเบิก ' + mv.no + ' แล้ว วัสดุคืนเข้าคลัง');
-      resetOut(null);
-    } catch (err) {
-      msg('outMsg', errText(err), 1);
-    }
-  });
   function renderOut() {
-    if (!$('outLines').querySelector('.ln') && !editOut && materials.length) addLine('out');
-    $('outLines')
-      .querySelectorAll('.ln input')
-      .forEach((i: HTMLInputElement) => i.dispatchEvent(new Event('input')));
-    if (!$('outDate').value) $('outDate').value = todayISO();
-    if (!editOut && !$('outNo').dataset.touched) {
-      const fy = fyOf($('outDate').value);
-      $('outNo').value = fmtNo(nextSeq('out', fy), fy);
-    }
+    if ($('btnNewOut')) $('btnNewOut').hidden = !canWrite;
     const people = [...new Set(moves.filter((m) => m.kind === 'out').map((m) => m.requester).filter(Boolean))];
     const pos = [...new Set(moves.filter((m) => m.kind === 'out').map((m) => m.reqPos).filter(Boolean))];
-    $('peopleList').innerHTML = people.map((p) => `<option value="${esc(p)}">`).join('');
-    $('posList').innerHTML = pos.map((p) => `<option value="${esc(p)}">`).join('');
+    if ($('peopleList')) $('peopleList').innerHTML = people.map((p) => `<option value="${esc(p)}">`).join('');
+    if ($('posList')) $('posList').innerHTML = pos.map((p) => `<option value="${esc(p)}">`).join('');
     const q = $('outQ').value.trim().toLowerCase(),
       fy = $('outFy').value;
     const rows = moves
@@ -1809,23 +1579,11 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     em.hidden = !!rows.length;
     em.innerHTML = moves.some((m) => m.kind === 'out')
       ? '<b>ไม่พบใบเบิกตามเงื่อนไข</b>ลองเปลี่ยนปีงบหรือคำค้นหา'
-      : '<b>ยังไม่มีใบเบิกวัสดุ</b>ออกใบเบิกใบแรกด้วยฟอร์มด้านบน ระบบจะรันเลขที่ใบเบิกตามปีงบประมาณให้';
+      : '<b>ยังไม่มีใบเบิกวัสดุ</b>ออกใบเบิกใบแรกด้วยปุ่ม “+ ใบเบิกวัสดุ” ด้านบน ระบบจะรันเลขที่ใบเบิกตามปีงบประมาณให้';
   }
-  $('outNo')?.addEventListener('input', () => ($('outNo').dataset.touched = 1));
   $('outQ')?.addEventListener('input', renderOut);
-  $('outFy')?.addEventListener('change', () => {
-    const fyVal = $('outFy').value;
-    if (!editOut && fyVal !== 'all') {
-      const targetFy = +fyVal;
-      if (targetFy && fyOf($('outDate').value) !== targetFy) {
-        $('outDate').value = targetFy === CUR_FY ? todayISO() : targetFy - 544 + '-10-01';
-      }
-      if (targetFy && !$('outNo').dataset.touched) {
-        $('outNo').value = fmtNo(nextSeq('out', targetFy), targetFy);
-      }
-    }
-    renderOut();
-  });
+  $('outFy')?.addEventListener('change', renderOut);
+  $('btnNewOut')?.addEventListener('click', () => openMoveForm('out', null, false));
   $('outRows')?.addEventListener('click', (e: Event) => {
     const v = (e.target as HTMLElement).closest('[data-viewmv]') as HTMLElement | null;
     if (v) {
@@ -1848,6 +1606,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       openMoveEdit(moves.find((m) => m.id === b.dataset.edout), false);
     }
   });
+  (window as any).openKumWatsaduCreate = (kind: 'in' | 'out') => openMoveForm(kind, null, false);
 
   function buildSlipDocx(d: any) {
     const x = (s: any) =>
@@ -5379,8 +5138,6 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     if (confirmClick('dellogo', $('logoDel'), 'กดอีกครั้งเพื่อลบโลโก้')) saveLogo('');
   });
 
-  resetIn(null);
-  resetOut(null);
   resetMat(null);
   setRepSeg();
   renderAll();
@@ -5669,8 +5426,6 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
         renderAll();
         backupNote();
         autoBk.changed();
-        if (!$('inLines')?.querySelector('.ln') && !editIn) resetIn(null);
-        if (!$('outLines')?.querySelector('.ln') && !editOut) resetOut(null);
       }
     };
     db.collection('materials').onSnapshot((s: any) => {
@@ -5824,25 +5579,6 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
         refreshCntFy(fyVal);
         fillRepSelects();
         if (cDraft && String(cDraft.fy) !== fyVal) cDraft = null;
-        const targetFy = +fyVal;
-        if (targetFy) {
-          if (!editIn && $('inDate')) {
-            if (fyOf($('inDate').value) !== targetFy) {
-              $('inDate').value = targetFy === CUR_FY ? todayISO() : targetFy - 544 + '-10-01';
-            }
-            if (!$('inNo')?.dataset.touched && $('inNo')) {
-              $('inNo').value = fmtNo(nextSeq('in', targetFy), targetFy);
-            }
-          }
-          if (!editOut && $('outDate')) {
-            if (fyOf($('outDate').value) !== targetFy) {
-              $('outDate').value = targetFy === CUR_FY ? todayISO() : targetFy - 544 + '-10-01';
-            }
-            if (!$('outNo')?.dataset.touched && $('outNo')) {
-              $('outNo').value = fmtNo(nextSeq('out', targetFy), targetFy);
-            }
-          }
-        }
       }
       renderTab(curTab());
     }

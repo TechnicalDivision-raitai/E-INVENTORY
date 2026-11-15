@@ -285,7 +285,11 @@ export default function App() {
             <div className="sidebar-quick">
               <button
                 type="button"
-                onClick={() => switchTab('in')}
+                onClick={() => {
+                  switchTab('in');
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  (window as any).openKumWatsaduCreate?.('in');
+                }}
                 className="quick-btn"
                 title="บันทึกรับวัสดุเข้าคลัง"
               >
@@ -294,7 +298,11 @@ export default function App() {
               </button>
               <button
                 type="button"
-                onClick={() => switchTab('out')}
+                onClick={() => {
+                  switchTab('out');
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  (window as any).openKumWatsaduCreate?.('out');
+                }}
                 className="quick-btn"
                 title="ออกใบเบิกวัสดุ"
               >
@@ -627,94 +635,18 @@ export default function App() {
           {/* รับเข้า */}
           <section id="view-in" hidden>
             <div className="stack">
-              <form className="card" id="inForm" autoComplete="off">
-                <div className="cardhead">
-                  <div>
-                    <h3 id="inTitle">บันทึกรับวัสดุเข้าคลัง</h3>
-                    <span className="sub">ราคาต่อหน่วยใช้คิดมูลค่าในบัญชีวัสดุตามลำดับรับเข้า (FIFO)</span>
-                  </div>
-                </div>
-                <fieldset className="form-section">
-                  <legend>ข้อมูลเอกสารใบรับ</legend>
-                  <div className="grid">
-                    <label className="f c3">
-                      เลขที่ใบรับ
-                      <input id="inNo" placeholder="001/2570" />
-                    </label>
-                    <label className="f c3">
-                      วันที่รับ <span className="req">*</span>
-                      <input id="inDate" type="date" required />
-                    </label>
-                    <label className="f c3">
-                      ที่มา
-                      <select id="inSrc"></select>
-                    </label>
-                    <label className="f c3" id="inInspectLbl">
-                      วันที่ตรวจรับ <span className="req">*</span>
-                      <input id="inInspect" type="date" required />
-                    </label>
-                    <label className="f c4" id="inPoLbl">
-                      เลขที่ใบสั่งซื้อ/สัญญา
-                      <input id="inPo" placeholder="เช่น 45/2570" />
-                    </label>
-                    <label className="f c4" id="inVendorLbl">
-                      <span id="inVendorTxt">ผู้ขาย / รับจาก</span>{' '}
-                      <span className="req" id="inVendorReq">
-                        *
-                      </span>
-                      <input id="inVendor" required placeholder="ชื่อร้านค้า / หน่วยงาน" />
-                    </label>
-                    <label className="f c4">
-                      เลขที่ใบส่งของ/ใบกำกับ
-                      <input id="inInvoice" placeholder="ระบุเลขที่ใบส่งของ (ถ้ามี)" />
-                    </label>
-                    <label className="f c12">
-                      หมายเหตุ
-                      <input id="inNote" placeholder="เช่น โครงการซ่อมแซมถนนในตำบล" />
-                    </label>
-                  </div>
-                </fieldset>
-                <fieldset className="form-section">
-                  <legend>รายการวัสดุที่รับเข้า</legend>
-                  <div className="lines in" id="inLines">
-                    <div className="lnhead">
-                      <span>วัสดุ</span>
-                      <span>จำนวน</span>
-                      <span>ราคา/หน่วย (บาท)</span>
-                      <span style={{ textAlign: 'right' }}>รวมเงิน</span>
-                      <span></span>
-                    </div>
-                  </div>
-                  <div className="repbar" style={{ margin: '10px 0 0' }}>
-                    <button type="button" className="btn small" id="inAdd">
-                      + เพิ่มรายการวัสดุ
-                    </button>
-                    <span className="sp"></span>
-                    <div className="linesum">
-                      รวมเป็นเงินทั้งสิ้น <span id="inSum">0.00</span> บาท
-                    </div>
-                  </div>
-                </fieldset>
-                <div className="formbar">
-                  <span className="msg" id="inMsg"></span>
-                  <button type="button" className="btn danger" id="inDel" hidden>
-                    ลบใบรับนี้
-                  </button>
-                  <button type="button" className="btn" id="inReset">
-                    ล้างฟอร์ม
-                  </button>
-                  <button type="submit" className="btn primary" id="inSave">
-                    บันทึกรับเข้า
-                  </button>
-                </div>
-              </form>
-
               <div className="card">
                 <div className="cardhead">
                   <h3>ประวัติและทะเบียนใบรับวัสดุ</h3>
-                  <div className="filters" style={{ margin: 0, flex: '0 1 420px' }}>
-                    <input id="inQ" type="search" placeholder="ค้นหา เลขที่ใบรับ หรือผู้ขาย..." />
-                    <select id="inFy"></select>
+                  <div className="hist-head-tools">
+                    <div className="filters hist-filters">
+                      <input id="inQ" type="search" placeholder="ค้นหา เลขที่ใบรับ หรือผู้ขาย..." />
+                      <select id="inFy"></select>
+                    </div>
+                    <button type="button" className="btn primary hist-add-btn" id="btnNewIn">
+                      <Plus className="h-4 w-4" />
+                      <span>รับเข้าวัสดุ</span>
+                    </button>
                   </div>
                 </div>
                 <div className="tablebox">
@@ -723,7 +655,8 @@ export default function App() {
                       <tr>
                         <th className="col-no">เลขที่</th>
                         <th className="col-date">วันที่รับ</th>
-                        <th className="col-party">ที่มา / ผู้ขาย</th>
+                        <th className="col-src">ที่มา</th>
+                        <th className="col-party">ผู้ขาย</th>
                         <th className="col-po">ใบสั่งซื้อ</th>
                         <th className="num col-val">มูลค่า (บาท)</th>
                         <th className="act-col col-act">จัดการ</th>
@@ -740,87 +673,21 @@ export default function App() {
           {/* ใบเบิก */}
           <section id="view-out" hidden>
             <div className="stack">
-              <form className="card" id="outForm" autoComplete="off">
-                <div className="cardhead">
-                  <div>
-                    <h3 id="outTitle">ออกใบเบิกวัสดุ</h3>
-                    <span className="sub">บันทึกแล้วตัดยอดคงเหลืออัตโนมัติ และสามารถสั่งพิมพ์หรือส่งออกเป็นไฟล์ Word ได้ทันที</span>
-                  </div>
-                </div>
-                <fieldset className="form-section">
-                  <legend>ข้อมูลผู้เบิกและงานที่ใช้</legend>
-                  <div className="grid">
-                    <label className="f c3">
-                      เลขที่ใบเบิก
-                      <input id="outNo" placeholder="001/2570" />
-                    </label>
-                    <label className="f c3">
-                      วันที่เบิก <span className="req">*</span>
-                      <input id="outDate" type="date" required />
-                    </label>
-                    <label className="f c6">
-                      ผู้เบิก <span className="req">*</span>
-                      <input id="outReq" required list="peopleList" placeholder="ชื่อ-นามสกุล ผู้ขอเบิก" />
-                    </label>
-                    <label className="f c4">
-                      ตำแหน่ง
-                      <input id="outPos" list="posList" placeholder="ตำแหน่งของผู้เบิก" />
-                    </label>
-                    <label className="f c8">
-                      เพื่อใช้ในงาน <span className="req">*</span>
-                      <input
-                        id="outPurpose"
-                        required
-                        placeholder="เช่น ซ่อมแซมถนนลาดยาง หมู่ 3 ตามคำร้องเลขรับ 012/2570"
-                      />
-                    </label>
-                    <label className="f c12">
-                      หมายเหตุ
-                      <input id="outNote" placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)" />
-                    </label>
-                  </div>
-                </fieldset>
-                <datalist id="peopleList"></datalist>
-                <datalist id="posList"></datalist>
-                <fieldset className="form-section">
-                  <legend>รายการวัสดุที่ขอเบิก</legend>
-                  <div className="lines out" id="outLines">
-                    <div className="lnhead">
-                      <span>วัสดุ</span>
-                      <span>จำนวนเบิก</span>
-                      <span>คงเหลือในคลัง</span>
-                      <span></span>
-                    </div>
-                  </div>
-                  <div style={{ marginTop: 10 }}>
-                    <button type="button" className="btn small" id="outAdd">
-                      + เพิ่มรายการวัสดุ
-                    </button>
-                  </div>
-                </fieldset>
-                <div className="formbar">
-                  <span className="msg" id="outMsg"></span>
-                  <button type="button" className="btn danger" id="outDel" hidden>
-                    ลบใบเบิกนี้ (คืนคลัง)
-                  </button>
-                  <button type="button" className="btn" id="outReset">
-                    ล้างฟอร์ม
-                  </button>
-                  <button type="submit" className="btn" data-print="0">
-                    บันทึกใบเบิก
-                  </button>
-                  <button type="submit" className="btn primary" data-print="1">
-                    บันทึกและพิมพ์ใบเบิก
-                  </button>
-                </div>
-              </form>
+              <datalist id="peopleList"></datalist>
+              <datalist id="posList"></datalist>
 
               <div className="card">
                 <div className="cardhead">
                   <h3>ประวัติและทะเบียนใบเบิกวัสดุ</h3>
-                  <div className="filters" style={{ margin: 0, flex: '0 1 420px' }}>
-                    <input id="outQ" type="search" placeholder="ค้นหา เลขที่ ผู้เบิก หรือชื่องาน..." />
-                    <select id="outFy"></select>
+                  <div className="hist-head-tools">
+                    <div className="filters hist-filters">
+                      <input id="outQ" type="search" placeholder="ค้นหา เลขที่ ผู้เบิก หรือชื่องาน..." />
+                      <select id="outFy"></select>
+                    </div>
+                    <button type="button" className="btn primary hist-add-btn" id="btnNewOut">
+                      <Plus className="h-4 w-4" />
+                      <span>ใบเบิกวัสดุ</span>
+                    </button>
                   </div>
                 </div>
                 <div className="tablebox">

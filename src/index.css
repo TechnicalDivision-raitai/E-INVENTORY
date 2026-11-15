@@ -2790,6 +2790,31 @@ fieldset.cmt legend {
 }
 
 /* History Tables (Receive / Issue Responsive Balanced Layout) */
+.hist-head-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex: 1 1 380px;
+  min-width: 0;
+}
+
+.hist-filters {
+  margin: 0 !important;
+  flex: 1 1 260px;
+  max-width: 460px;
+}
+
+.hist-add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  flex: none;
+  min-height: 42px;
+}
+
 .hist-table {
   table-layout: auto;
   width: 100%;
@@ -2814,6 +2839,12 @@ fieldset.cmt legend {
   text-align: right;
   white-space: nowrap;
   width: 1%;
+}
+
+.hist-table .col-src {
+  min-width: 115px;
+  word-break: normal;
+  overflow-wrap: break-word;
 }
 
 .hist-table .col-party {
