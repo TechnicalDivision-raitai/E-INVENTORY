@@ -133,6 +133,13 @@ nav.tabs::-webkit-scrollbar-thumb:hover {
 
 .sidebar-brand-text {
   min-width: 0;
+  flex: 1;
+}
+
+.sidebar-close-btn,
+.mobile-nav-toggle,
+.sidebar-backdrop {
+  display: none;
 }
 
 .sidebar-title {
@@ -3157,28 +3164,85 @@ fieldset.cmt legend {
     grid-template-columns: minmax(0, 1fr);
   }
   aside.app-sidebar {
-    position: static;
-    height: auto;
-    padding: 14px 16px;
-    gap: 10px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 272px;
+    max-width: 84vw;
+    height: 100dvh;
+    padding: 18px 14px 20px;
+    gap: 14px;
+    z-index: 60;
+    transform: translateX(-100%);
+    visibility: hidden;
+    pointer-events: none;
+    transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1), visibility 0.24s ease;
+    box-shadow: none;
+  }
+  aside.app-sidebar.is-open {
+    transform: translateX(0);
+    visibility: visible;
+    pointer-events: auto;
+    box-shadow: 0 18px 48px rgba(6, 30, 22, 0.45);
+  }
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    background: rgba(6, 30, 22, 0.45);
+    backdrop-filter: blur(2px);
+  }
+  .sidebar-close-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    border: 1px solid rgba(208, 244, 222, 0.28);
+    background: rgba(208, 244, 222, 0.1);
+    color: #ecfdf5;
+    cursor: pointer;
+    flex: none;
+    margin-left: auto;
+    transition: background 0.15s ease;
+  }
+  .sidebar-close-btn:hover {
+    background: rgba(208, 244, 222, 0.22);
+  }
+  .mobile-nav-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    border: 1.5px solid var(--line-strong);
+    background: var(--sunk);
+    color: var(--fg);
+    cursor: pointer;
+    flex: none;
+    margin-right: 4px;
+    transition: all 0.15s ease;
+  }
+  .mobile-nav-toggle:hover {
+    background: var(--mint);
+    border-color: var(--ink);
+    color: var(--ink);
   }
   .sidebar-brand {
-    padding: 0 0 10px;
-  }
-  .sidebar-sec-head,
-  .nav-divider,
-  .sidebar-user-box {
-    display: none;
+    padding: 2px 4px 14px;
   }
   nav.tabs {
-    flex-direction: row;
-    overflow-x: auto;
-    padding-bottom: 4px;
-    gap: 8px;
+    flex-direction: column;
+    overflow-x: visible;
+    gap: 6px;
   }
   nav.tabs button {
-    width: auto;
-    padding: 8px 14px;
+    width: 100%;
+    padding: 10px 14px;
   }
   .topbar {
     padding: 10px 16px;

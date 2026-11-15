@@ -22,6 +22,8 @@ import {
   RotateCcw,
   CalendarPlus,
   RefreshCw,
+  Menu,
+  X,
 } from 'lucide-react';
 import { bootKumWatsaduApp } from './kumwatsaduController';
 import { InstallAndPortableSection } from './PWAInstallButton';
@@ -100,6 +102,16 @@ export default function App() {
     payload: unknown;
   } | null>(null);
   const [isResolvingFolderConflict, setIsResolvingFolderConflict] = useState<boolean>(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMobileNavOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [mobileNavOpen]);
 
   useEffect(() => {
     const syncLastBackup = (ev?: Event) => {
@@ -188,6 +200,7 @@ export default function App() {
   };
 
   const switchTab = (tab: string) => {
+    setMobileNavOpen(false);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const fn = (window as any).showKumWatsaduTab;
     if (typeof fn === 'function') {
@@ -373,7 +386,7 @@ export default function App() {
     <div className="kumwatsadu-root">
       <div className="app-shell">
         {/* Sidebar Navigation (Dark Deep Emerald-Forest matching reference layout) */}
-        <aside className="app-sidebar no-print">
+        <aside className={`app-sidebar no-print${mobileNavOpen ? ' is-open' : ''}`} id="appSidebar">
           <div className="sidebar-brand" onClick={() => switchTab('set')} style={{ cursor: 'pointer' }} title="คลิกเพื่อแก้ไขชื่อหน่วยงาน">
             <img className="logo" id="mastLogo" alt="โลโก้หน่วยงาน" hidden />
             <div className="logo-fallback" id="mastLogoFallback">
@@ -385,6 +398,18 @@ export default function App() {
                 กองช่าง · องค์การบริหารส่วนตำบลไร่ใต้
               </div>
             </div>
+            <button
+              type="button"
+              className="sidebar-close-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                setMobileNavOpen(false);
+              }}
+              aria-label="ปิดแถบเมนูด้านข้าง"
+              title="ปิดเมนู"
+            >
+              <X className="h-5 w-5" />
+            </button>
           </div>
 
           <div className="sidebar-user-box">
@@ -418,7 +443,16 @@ export default function App() {
             </div>
           </div>
 
-          <nav className="tabs" role="tablist" aria-label="เมนูหลัก">
+          <nav
+            className="tabs"
+            role="tablist"
+            aria-label="เมนูหลัก"
+            onClick={(e) => {
+              if ((e.target as HTMLElement).closest('button[data-tab]')) {
+                setMobileNavOpen(false);
+              }
+            }}
+          >
             <button role="tab" aria-selected="true" data-tab="stock">
               <Boxes className="nav-ic" />
               <span className="nav-lbl">หน้าหลัก</span>
@@ -457,11 +491,30 @@ export default function App() {
           </nav>
         </aside>
 
+        {mobileNavOpen && (
+          <div
+            className="sidebar-backdrop no-print"
+            onClick={() => setMobileNavOpen(false)}
+            aria-hidden="true"
+          />
+        )}
+
         {/* Main Workspace Column */}
         <div className="main-area">
           {/* Top White Breadcrumb & Status Bar */}
           <div className="topbar no-print">
             <div className="breadcrumb">
+              <button
+                type="button"
+                className="mobile-nav-toggle"
+                onClick={() => setMobileNavOpen((prev) => !prev)}
+                aria-label="เปิดแถบเมนูด้านข้าง"
+                aria-expanded={mobileNavOpen}
+                aria-controls="appSidebar"
+                title="เปิดเมนู"
+              >
+                <Menu className="h-5 w-5" />
+              </button>
               <span className="crumb-root">ระบบคุมวัสดุ</span>
               <span className="crumb-sep">/</span>
               <span className="crumb-cur" id="breadcrumbCurrent">
