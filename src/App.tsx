@@ -351,15 +351,18 @@ export default function App() {
     await db.doc('settings/main').set({
       div: 'กองช่าง',
       work: 'งานพัสดุ',
-      org: 'องค์การบริหารส่วนตำบลตัวอย่าง อำเภอเมือง จังหวัดนครราชสีมา',
-      appr: 'นายเกรียงไกร พัฒนาดี',
-      apprPos: 'ผู้อำนวยการกองช่าง',
-      payer: 'นางสาวสุดา รอบคอบ',
-      payerPos: 'เจ้าพนักงานพัสดุชำนาญงาน',
-      staff: 'นางสาวสุดา รอบคอบ',
-      staffPos: 'เจ้าพนักงานพัสดุชำนาญงาน',
-      head: 'นายเกรียงไกร พัฒนาดี',
-      headPos: 'ผู้อำนวยการกองช่าง',
+      org: 'องค์การบริหารส่วนตำบลไร่ใต้',
+      amp: 'พิบูลมังสาหาร',
+      chw: 'อุบลราชธานี',
+      zip: '34110',
+      appr: '',
+      apprPos: '',
+      payer: '',
+      payerPos: '',
+      staff: '',
+      staffPos: '',
+      head: '',
+      headPos: '',
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -379,7 +382,7 @@ export default function App() {
             <div className="sidebar-brand-text">
               <div className="sidebar-title">ระบบคุมวัสดุ</div>
               <div className="sidebar-sub org" id="mastOrg">
-                กองช่าง · ชื่อหน่วยงาน
+                กองช่าง · องค์การบริหารส่วนตำบลไร่ใต้
               </div>
             </div>
           </div>
@@ -1298,19 +1301,24 @@ export default function App() {
                     </datalist>
                     <label className="f c12">
                       ชื่อหน่วยงาน (องค์กรปกครองส่วนท้องถิ่น) <span className="req">*</span>
-                      <input id="gOrg" required placeholder="เช่น องค์การบริหารส่วนตำบล... (ระบุชื่อ อปท.)" />
+                      <input
+                        id="gOrg"
+                        required
+                        defaultValue="องค์การบริหารส่วนตำบลไร่ใต้"
+                        placeholder="เช่น องค์การบริหารส่วนตำบลไร่ใต้"
+                      />
                     </label>
                     <label className="f c4">
                       อำเภอ
-                      <input id="gAmp" placeholder="เช่น เมืองนครราชสีมา" />
+                      <input id="gAmp" placeholder="เช่น พิบูลมังสาหาร" />
                     </label>
                     <label className="f c4">
                       จังหวัด
-                      <input id="gChw" placeholder="เช่น นครราชสีมา" />
+                      <input id="gChw" placeholder="เช่น อุบลราชธานี" />
                     </label>
                     <label className="f c4">
                       รหัสไปรษณีย์ (5 หลัก)
-                      <input id="gZip" inputMode="numeric" maxLength={5} placeholder="เช่น 30000" />
+                      <input id="gZip" inputMode="numeric" maxLength={5} placeholder="เช่น 34110" />
                     </label>
                     <label className="f c6">
                       ชื่อเจ้าหน้าที่ประสานงาน
@@ -1344,7 +1352,7 @@ export default function App() {
                   <div className="grid">
                     <label className="f c6">
                       ผู้อนุมัติ (ใบเบิกวัสดุ) / ผอ.กอง/สำนัก
-                      <input id="gAppr" placeholder="เช่น นางสาวทัตพิชา ผาลี" />
+                      <input id="gAppr" placeholder="เว้นว่างได้" />
                     </label>
                     <label className="f c6">
                       ตำแหน่งผู้อนุมัติ (แสดงหลัง "เรียน" และใต้ลายเซ็น)
@@ -1353,11 +1361,11 @@ export default function App() {
                     </label>
                     <label className="f c6">
                       ผู้จ่าย / ผู้ควบคุมวัสดุ (และผู้จัดทำรายงาน)
-                      <input id="gStaff" placeholder="เช่น นางสาวสุดา รอบคอบ" />
+                      <input id="gStaff" placeholder="เว้นว่างได้" />
                     </label>
                     <label className="f c6">
                       ตำแหน่งผู้จ่าย / ผู้ควบคุมวัสดุ
-                      <input id="gStaffPos" placeholder="เว้นว่าง = ผู้ควบคุมวัสดุ ตามชื่อกอง/สำนักที่ตั้งค่า" />
+                      <input id="gStaffPos" placeholder="เว้นว่างได้" />
                     </label>
                   </div>
                   <div className="sub" style={{ marginTop: 8 }}>

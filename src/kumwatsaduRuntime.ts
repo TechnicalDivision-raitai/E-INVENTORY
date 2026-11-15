@@ -237,6 +237,32 @@ export function initMiniLibsAndDb() {
     }
   }
   load();
+  try {
+    const MIG_KEY = KEY + ':raiTaiOrgMigratedV1';
+    if (ok && !localStorage.getItem(MIG_KEY)) {
+      const m = store.settings?.main;
+      if (m && typeof m === 'object') {
+        m.org = 'องค์การบริหารส่วนตำบลไร่ใต้';
+        if (!m.amp || m.amp === 'เมือง') m.amp = 'พิบูลมังสาหาร';
+        if (!m.chw || m.chw === 'นครราชสีมา') m.chw = 'อุบลราชธานี';
+        if (!m.zip) m.zip = '34110';
+        if (!m.appr && !m.head) {
+          m.apprPos = '';
+          m.headPos = '';
+        }
+        if (m.vs && typeof m.vs === 'object') {
+          m.vs.org = 'องค์การบริหารส่วนตำบลไร่ใต้';
+          if (!m.vs.amp || m.vs.amp === 'เมือง') m.vs.amp = 'พิบูลมังสาหาร';
+          if (!m.vs.chw || m.vs.chw === 'นครราชสีมา') m.vs.chw = 'อุบลราชธานี';
+          if (!m.vs.zip) m.vs.zip = '34110';
+        }
+        localStorage.setItem(KEY, JSON.stringify(store));
+      }
+      localStorage.setItem(MIG_KEY, '1');
+    }
+  } catch {
+    // ignore migration errors
+  }
   const subs: Array<{ c: string; id?: string; cb: (snap: any) => void }> = [];
   const clone = (v: any) => JSON.parse(JSON.stringify(v));
   const snapColl = (c: string) => {

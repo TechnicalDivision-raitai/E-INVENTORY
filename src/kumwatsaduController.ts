@@ -29,13 +29,19 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
   let canWrite = true;
   let materials: any[] = [];
   let moves: any[] = [];
+  const OLD_DEF_ORG = 'ชื่อหน่วยงาน (แก้ได้ที่แท็บตั้งค่า)';
   const DEF_SET = {
     div: 'กองช่าง',
-    org: 'ชื่อหน่วยงาน (แก้ได้ที่แท็บตั้งค่า)',
+    org: 'องค์การบริหารส่วนตำบลไร่ใต้',
+    amp: 'พิบูลมังสาหาร',
+    chw: 'อุบลราชธานี',
+    zip: '34110',
     appr: '',
-    apprPos: 'ผู้อำนวยการกองช่าง',
+    apprPos: '',
     payer: '',
     payerPos: '',
+    staff: '',
+    staffPos: '',
   };
   let settings: any = { ...DEF_SET };
 
@@ -132,9 +138,24 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
   }
   function applySet(raw: any) {
     raw = raw || {};
-    const d = { ...DEF_SET, ...raw };
-    if (!('div' in raw) && raw.org) {
-      const m = String(raw.org).match(/^((?:กอง|สำนัก)\S*)\s+(.+)$/);
+    const normalized = { ...raw };
+    const rawOrg = String(normalized.org || '').trim();
+    const LEGACY_ORGS = new Set([
+      '',
+      OLD_DEF_ORG,
+      'ชื่อหน่วยงาน',
+      'องค์การบริหารส่วนตำบลตัวอย่าง',
+      'องค์การบริหารส่วนตำบลตัวอย่าง อำเภอเมือง จังหวัดนครราชสีมา',
+    ]);
+    if (LEGACY_ORGS.has(rawOrg)) {
+      normalized.org = DEF_SET.org;
+      if (!normalized.amp || normalized.amp === 'เมือง') normalized.amp = DEF_SET.amp;
+      if (!normalized.chw || normalized.chw === 'นครราชสีมา') normalized.chw = DEF_SET.chw;
+      if (!normalized.zip) normalized.zip = DEF_SET.zip;
+    }
+    const d = { ...DEF_SET, ...normalized };
+    if (!('div' in normalized) && normalized.org) {
+      const m = String(normalized.org).match(/^((?:กอง|สำนัก)\S*)\s+(.+)$/);
       if (m) {
         d.div = m[1];
         d.org = m[2];
@@ -1828,7 +1849,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       ? fmtQ(totalQty) + (units[0] ? ' ' + units[0] : '')
       : items.length + ' รายการ';
     const orgName = orgParts().name;
-    const payerPos = settings.staffPos || settings.payerPos || settings.vsMkPos || defaultControllerPos();
+    const payerPos = settings.staffPos || settings.payerPos || settings.vsMkPos || '';
     const payerName = settings.staff || settings.payer || settings.vsMk || '';
     return {
       orgName,
@@ -1839,7 +1860,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       payer: { n: payerName, p: payerPos },
       appr: {
         n: settings.appr || settings.vsFin || settings.head || '',
-        p: settings.apprPos || settings.vsFinPos || settings.headPos || defaultDivHeadPos(),
+        p: settings.apprPos || settings.vsFinPos || settings.headPos || '',
       },
       req: { n: mv.requester || '', p: mv.reqPos || '' },
       date: mv.date ? thDateFull(mv.date) : '',
@@ -3578,7 +3599,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
   };
   function orgParts() {
     const raw = String(settings.org || '').trim();
-    const o = raw === DEF_SET.org ? '' : raw;
+    const o = raw === OLD_DEF_ORG ? '' : raw;
     const m = o.match(/^(.*?)\s*(?:อำเภอ|อ\.)\s*(\S+)\s*(?:จังหวัด|จ\.)\s*(\S+)/);
     return m ? { name: m[1].trim(), amp: m[2], chw: m[3] } : { name: o, amp: '', chw: '' };
   }
@@ -4891,7 +4912,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     const newDiv = $('gDiv').value.trim();
     const curPos = posGet('gApprPos');
     const prevDef = defaultDivHeadPos(lastDivForSync);
-    if (!curPos || curPos === prevDef || curPos === 'ผู้อำนวยการกอง') {
+    if (curPos && (curPos === prevDef || curPos === 'ผู้อำนวยการกอง')) {
       posSet('gApprPos', defaultDivHeadPos(newDiv));
     }
     lastDivForSync = newDiv;
@@ -4903,16 +4924,16 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     $('gDiv').value = s.div || '';
     lastDivForSync = s.div || '';
     $('gWork').value = s.work || '';
-    $('gOrg').value = s.org || '';
-    if ($('gAmp')) $('gAmp').value = s.amp || vs.amp || op.amp || '';
-    if ($('gChw')) $('gChw').value = s.chw || vs.chw || op.chw || '';
-    if ($('gZip')) $('gZip').value = s.zip || vs.zip || '';
+    $('gOrg').value = s.org || DEF_SET.org;
+    if ($('gAmp')) $('gAmp').value = s.amp || vs.amp || op.amp || DEF_SET.amp;
+    if ($('gChw')) $('gChw').value = s.chw || vs.chw || op.chw || DEF_SET.chw;
+    if ($('gZip')) $('gZip').value = s.zip || vs.zip || DEF_SET.zip;
     if ($('gCo')) $('gCo').value = s.co || vs.co || '';
     if ($('gCoPos')) $('gCoPos').value = s.coPos || vs.coPos || '';
     if ($('gTel')) $('gTel').value = s.tel || vs.tel || '';
     if ($('gFax')) $('gFax').value = s.fax || vs.fax || '';
-    $('gAppr').value = s.appr || s.vsFin || vs.fin || s.head || '';
-    posSet('gApprPos', s.apprPos || s.vsFinPos || s.headPos || defaultDivHeadPos(s.div));
+    $('gAppr').value = s.appr || s.vsFin || s.fin || s.head || '';
+    posSet('gApprPos', s.apprPos || s.vsFinPos || s.headPos || '');
     $('gStaff').value = s.staff || s.payer || s.vsMk || vs.mk || '';
     $('gStaffPos').value = s.staffPos || s.payerPos || s.vsMkPos || vs.mkPos || '';
     if ($('gVsMk')) $('gVsMk').value = s.vsMk || vs.mk || '';
@@ -4984,7 +5005,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       vsExe: vsExeVal,
       vsExePos: vsExePosVal,
       vs: {
-        org: orgVal === DEF_SET.org ? '' : orgVal,
+        org: orgVal === OLD_DEF_ORG ? '' : orgVal,
         amp: ampVal,
         chw: chwVal,
         zip: zipVal,
