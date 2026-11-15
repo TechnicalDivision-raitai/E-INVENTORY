@@ -1,0 +1,8 @@
+{
+  "name": "ระบบคุมวัสดุ ",
+  "description": "ระบบควบคุมวัสดุ รับเข้า เบิกจ่าย รายงานบัญชีวัสดุ แบบ อปท.-วส. และตรวจนับประจำปี ใช้งานแบบออฟไลน์ เก็บข้อมูลใน LocalStorage ติดตั้งลงเครื่องได้และดาวน์โหลดเป็นไฟล์ .html เดี่ยวได้",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
