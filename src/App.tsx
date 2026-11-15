@@ -25,12 +25,58 @@ import {
 import { bootKumWatsaduApp } from './kumwatsaduController';
 import { InstallAndPortableSection } from './PWAInstallButton';
 
+const TH_MONTHS_SHORT = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+
+function formatLastBackupDate(raw: string | null): string {
+  const val = (raw || '').trim();
+  if (!val) return 'Never';
+  const isoMatch = val.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) {
+    const y = Number(isoMatch[1]) + 543;
+    const m = Number(isoMatch[2]);
+    const d = Number(isoMatch[3]);
+    if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+      return `${d} ${TH_MONTHS_SHORT[m - 1]} ${y}`;
+    }
+  }
+  return val;
+}
+
 export default function App() {
   const [materialCount, setMaterialCount] = useState<number>(0);
+  const [lastBackupRaw, setLastBackupRaw] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('kumwatsadu-db-v1:lastBackup');
+    } catch {
+      return null;
+    }
+  });
 
   useEffect(() => {
     bootKumWatsaduApp((cnt) => setMaterialCount(cnt));
   }, []);
+
+  useEffect(() => {
+    const syncLastBackup = () => {
+      try {
+        setLastBackupRaw(localStorage.getItem('kumwatsadu-db-v1:lastBackup'));
+      } catch {
+        setLastBackupRaw(null);
+      }
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (!e.key || e.key === 'kumwatsadu-db-v1:lastBackup') syncLastBackup();
+    };
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('kumwatsadu-lastbackup-change', syncLastBackup);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('kumwatsadu-lastbackup-change', syncLastBackup);
+    };
+  }, []);
+
+  const lastBackupLabel = formatLastBackupDate(lastBackupRaw);
+  const hasBackup = Boolean((lastBackupRaw || '').trim());
 
   const switchTab = (tab: string) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -368,6 +414,20 @@ export default function App() {
               </span>
             </div>
             <div className="topbar-right">
+              <button
+                type="button"
+                id="topbarLastBackup"
+                onClick={() => switchTab('set')}
+                className={`backup-indicator ${hasBackup ? 'is-ok' : 'is-warn'}`}
+                title={
+                  hasBackup
+                    ? `สำรองข้อมูลล่าสุด: ${lastBackupLabel} (คลิกเพื่อไปที่หน้าสำรองข้อมูล)`
+                    : 'ยังไม่มีประวัติการสำรองข้อมูล (คลิกเพื่อสำรองข้อมูล)'
+                }
+              >
+                <span className="backup-dot" aria-hidden="true" />
+                <span className="backup-txt">Last Backup: {lastBackupLabel}</span>
+              </button>
               <button
                 type="button"
                 onClick={() => switchTab('set')}

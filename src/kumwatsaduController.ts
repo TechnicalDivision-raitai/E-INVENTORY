@@ -5402,6 +5402,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
   function backupNote() {
     const lb = localDb.meta('lastBackup');
     if ($('lastBackup')) $('lastBackup').textContent = lb ? '· สำรองล่าสุด ' + thDate(lb) : '· ยังไม่เคยสำรองข้อมูล';
+    window.dispatchEvent(new CustomEvent('kumwatsadu-lastbackup-change', { detail: lb || '' }));
     if (!autoBk.hasDir && autoBk.state === 'off') {
       notice(
         'ยังไม่ได้เลือกการเก็บสำรองข้อมูลอัตโนมัติ ไปที่แท็บ “ตั้งค่า / สำรองข้อมูล” แล้วกด “เลือกโฟลเดอร์สำรองอัตโนมัติ”'
