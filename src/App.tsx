@@ -427,19 +427,44 @@ export default function App() {
 
             {/* วัสดุคงคลัง */}
             <section id="view-stock">
-              {/* Overview Top Filter Bar (Matching Reference Layout with Fiscal Year Filter & Add Future FY) */}
+              <div className="repbar no-print" style={{ marginBottom: 14 }}>
+                <div className="seg" role="tablist" aria-label="มุมมองภาพรวมงานควบคุมวัสดุ">
+                  <button
+                    type="button"
+                    className="btn"
+                    role="tab"
+                    data-st="dash"
+                    aria-selected="true"
+                    aria-pressed="true"
+                  >
+                    ภาพรวม
+                  </button>
+                  <button
+                    type="button"
+                    className="btn"
+                    role="tab"
+                    data-st="list"
+                    aria-selected="false"
+                    aria-pressed="false"
+                  >
+                    รายการวัสดุคงคลังทั้งหมด
+                  </button>
+                </div>
+              </div>
+
+              {/* Filter Bar */}
               <div className="overview-filter-bar no-print">
                 <div className="of-field">
                   <label htmlFor="sFy">ปีงบประมาณ</label>
                   <select id="sFy"></select>
                 </div>
-                <div className="of-field">
+                <div className="of-field" id="ofCat" hidden>
                   <label htmlFor="sCat">ประเภทวัสดุ</label>
                   <select id="sCat">
                     <option value="">ทุกประเภทวัสดุ</option>
                   </select>
                 </div>
-                <div className="of-field">
+                <div className="of-field" id="ofState" hidden>
                   <label htmlFor="sState">สถานะคงเหลือ</label>
                   <select id="sState">
                     <option value="">ทุกสถานะคงเหลือ</option>
@@ -449,7 +474,7 @@ export default function App() {
                     <option value="ok">ปกติ</option>
                   </select>
                 </div>
-                <div className="of-field of-search">
+                <div className="of-field of-search" id="ofSearch" hidden>
                   <label htmlFor="sQ">ค้นหา</label>
                   <input id="sQ" type="search" placeholder="ค้นหาชื่อวัสดุ ประเภท หรือหมายเหตุ..." />
                 </div>
@@ -461,7 +486,7 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="dash">
+              <div className="dash" id="stockDashPanel">
                 <div className="kpis">
                   <div className="kpi">
                     <div className="kpi-top">
@@ -572,32 +597,32 @@ export default function App() {
                 </div>
               </div>
 
-            <div className="stock-table-card card">
-              <div className="sechead">
-                <div>
-                  <h3>รายการวัสดุคงคลังทั้งหมด</h3>
-                  <span className="sub" id="tCount"></span>
+              <div className="stock-table-card card" id="stockListPanel" hidden>
+                <div className="sechead">
+                  <div>
+                    <h3>รายการวัสดุคงคลังทั้งหมด</h3>
+                    <span className="sub" id="tCount"></span>
+                  </div>
+                </div>
+                <div className="tablebox">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>รายการวัสดุ</th>
+                        <th>หน่วย</th>
+                        <th className="num">คงเหลือ</th>
+                        <th className="num">ราคา/หน่วย (FIFO)</th>
+                        <th className="num">มูลค่าคงเหลือ</th>
+                        <th>สถานะ</th>
+                        <th>การจัดการ</th>
+                      </tr>
+                    </thead>
+                    <tbody id="stockRows"></tbody>
+                  </table>
+                  <div className="empty" id="emptyStock" hidden></div>
                 </div>
               </div>
-              <div className="tablebox">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>รายการวัสดุ</th>
-                      <th>หน่วย</th>
-                      <th className="num">คงเหลือ</th>
-                      <th className="num">ราคา/หน่วย (FIFO)</th>
-                      <th className="num">มูลค่าคงเหลือ</th>
-                      <th>สถานะ</th>
-                      <th>การจัดการ</th>
-                    </tr>
-                  </thead>
-                  <tbody id="stockRows"></tbody>
-                </table>
-                <div className="empty" id="emptyStock" hidden></div>
-              </div>
-            </div>
-          </section>
+            </section>
 
           {/* รับเข้า */}
           <section id="view-in" hidden>
@@ -831,23 +856,94 @@ export default function App() {
                   </div>
                 </div>
                 <div className="grid">
-                  <label className="f c6">
-                    ชื่อหรือชนิดวัสดุ <span className="req">*</span>
-                    <input id="mName" required placeholder="เช่น ยางมะตอยสำเร็จรูป, ดินสอดำ 2B" />
-                  </label>
-                  <label className="f c3">
-                    ประเภทวัสดุ
-                    <input id="mCat" list="catList" placeholder="เลือกจากรายการ หรือพิมพ์เอง" />
-                  </label>
-                  <datalist id="catList"></datalist>
+                  <div className="f c6">
+                    <label htmlFor="mName">
+                      ชื่อหรือชนิดวัสดุ <span className="req">*</span>
+                    </label>
+                    <div className="sug-wrap" id="mNameWrap">
+                      <input
+                        id="mName"
+                        className="has-sug-btn"
+                        required
+                        autoComplete="off"
+                        aria-autocomplete="list"
+                        aria-controls="mNameSug"
+                        aria-expanded="false"
+                        placeholder="เช่น ยางมะตอยสำเร็จรูป, ดินสอดำ 2B"
+                      />
+                      <button
+                        type="button"
+                        className="sug-toggle"
+                        id="mNameSugBtn"
+                        tabIndex={-1}
+                        aria-label="แสดงรายการเสนอชื่อวัสดุ"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <polyline points="6 9 12 15 18 9" />
+                        </svg>
+                      </button>
+                      <div className="sug-box" id="mNameSug" role="listbox" hidden></div>
+                    </div>
+                  </div>
+                  <div className="f c3">
+                    <label htmlFor="mCat">ประเภทวัสดุ</label>
+                    <div className="sug-wrap" id="mCatWrap">
+                      <input
+                        id="mCat"
+                        className="has-sug-btn"
+                        autoComplete="off"
+                        aria-autocomplete="list"
+                        aria-controls="mCatSug"
+                        aria-expanded="false"
+                        placeholder="เลือกจากรายการ หรือพิมพ์เอง"
+                      />
+                      <button
+                        type="button"
+                        className="sug-toggle"
+                        id="mCatSugBtn"
+                        tabIndex={-1}
+                        aria-label="แสดงรายการประเภทวัสดุ"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <polyline points="6 9 12 15 18 9" />
+                        </svg>
+                      </button>
+                      <div className="sug-box" id="mCatSug" role="listbox" hidden></div>
+                    </div>
+                  </div>
                   <label className="f c3">
                     รหัสวัสดุ (ถ้ามี)
                     <input id="mCode" placeholder="เช่น CON-001 (เว้นว่างได้)" />
                   </label>
-                  <label className="f c3">
-                    หน่วยที่นับ <span className="req">*</span>
-                    <input id="mUnit" required list="unitList" placeholder="เช่น ถุง, รีม, หลอด" />
-                  </label>
+                  <div className="f c3">
+                    <label htmlFor="mUnit">
+                      หน่วยที่นับ <span className="req">*</span>
+                    </label>
+                    <div className="sug-wrap" id="mUnitWrap">
+                      <input
+                        id="mUnit"
+                        className="has-sug-btn"
+                        required
+                        autoComplete="off"
+                        aria-autocomplete="list"
+                        aria-controls="mUnitSug"
+                        aria-expanded="false"
+                        placeholder="เช่น ถุง, รีม, หลอด"
+                      />
+                      <button
+                        type="button"
+                        className="sug-toggle"
+                        id="mUnitSugBtn"
+                        tabIndex={-1}
+                        aria-label="แสดงรายการหน่วยนับ"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <polyline points="6 9 12 15 18 9" />
+                        </svg>
+                      </button>
+                      <div className="sug-box" id="mUnitSug" role="listbox" hidden></div>
+                    </div>
+                  </div>
                   <label className="f c5">
                     ขนาดหรือลักษณะ
                     <input id="mNote" placeholder="รายละเอียดขนาด ลักษณะ รุ่น หรือยี่ห้อ" />
@@ -868,24 +964,6 @@ export default function App() {
                     ข้อมูลทั้งหมดใช้แสดงในหัวแบบฟอร์ม “บัญชีวัสดุ” ตามระเบียบพัสดุ
                   </p>
                 </div>
-                <datalist id="unitList">
-                  <option value="ถุง" />
-                  <option value="กระสอบ" />
-                  <option value="ถัง" />
-                  <option value="ลิตร" />
-                  <option value="กิโลกรัม" />
-                  <option value="ตัน" />
-                  <option value="คิว" />
-                  <option value="ท่อน" />
-                  <option value="เส้น" />
-                  <option value="แผ่น" />
-                  <option value="ม้วน" />
-                  <option value="หลอด" />
-                  <option value="ชุด" />
-                  <option value="อัน" />
-                  <option value="ตัว" />
-                  <option value="เมตร" />
-                </datalist>
                 <div className="formbar" style={{ marginTop: 14 }}>
                   <span className="msg" id="mMsg"></span>
                   <button type="button" className="btn danger" id="mDel" hidden>
@@ -906,26 +984,22 @@ export default function App() {
                     <h3>นำเข้าวัสดุจากไฟล์ Excel (.xlsx / .csv)</h3>
                     <span className="sub">เพิ่มทะเบียนวัสดุพร้อมยอดยกมาทีละหลายรายการอย่างรวดเร็ว</span>
                   </div>
+                  <div className="imp-actions">
+                    <button type="button" className="btn" id="impTpl">
+                      ดาวน์โหลดแบบฟอร์ม Excel
+                    </button>
+                    <label className="btn primary" htmlFor="impFile" style={{ cursor: 'pointer' }}>
+                      เลือกไฟล์ Excel เพื่อนำเข้า…
+                    </label>
+                    <input
+                      id="impFile"
+                      type="file"
+                      accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+                      hidden
+                    />
+                  </div>
                 </div>
-                <p className="hint">
-                  1) ดาวน์โหลดแบบฟอร์ม Excel แล้วกรอกรายการวัสดุ &nbsp;&rarr;&nbsp; 2) แนบไฟล์ .xlsx หรือ .csv
-                  &nbsp;&rarr;&nbsp; 3) ตรวจสอบตารางตัวอย่างแล้วกด “นำเข้า”
-                </p>
-                <div className="formbar" style={{ borderTop: 0, paddingTop: 0, justifyContent: 'flex-start' }}>
-                  <button type="button" className="btn" id="impTpl">
-                    ดาวน์โหลดแบบฟอร์ม Excel
-                  </button>
-                  <label className="btn primary" htmlFor="impFile" style={{ cursor: 'pointer' }}>
-                    เลือกไฟล์ Excel เพื่อนำเข้า…
-                  </label>
-                  <input
-                    id="impFile"
-                    type="file"
-                    accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
-                    hidden
-                  />
-                  <span className="msg" id="impMsg" style={{ marginLeft: 4 }}></span>
-                </div>
+                <div className="msg imp-msg" id="impMsg"></div>
                 <div id="impPrev" hidden>
                   <div className="tablebox impbox">
                     <table>
@@ -1011,45 +1085,48 @@ export default function App() {
                     สรุปการเบิก (ผู้เบิก/งาน)
                   </button>
                   <button className="btn" data-rk="vs" aria-pressed="false">
-                    แบบ อปท.-วส. (รวมทั้งหน่วยงาน)
+                    แบบ อปท.-วส. (ประจำกอง)
                   </button>
                 </div>
               </div>
-              <div className="repbar" style={{ marginBottom: 0 }}>
-                <label htmlFor="rFy" className="sub">
-                  ปีงบประมาณ
-                </label>
-                <select id="rFy"></select>
-                <label htmlFor="rMonth" className="sub" id="rMonthLbl">
-                  ช่วงเวลา
-                </label>
-                <select id="rMonth"></select>
-                <label htmlFor="rMat" className="sub" id="rMatLbl" hidden>
-                  เลือกวัสดุ
-                </label>
-                <select id="rMat" hidden></select>
-                <label htmlFor="rSheetFmt" className="sub" id="rSheetFmtLbl" hidden>
-                  รูปแบบแผ่นที่ (1)
-                </label>
-                <select id="rSheetFmt" hidden style={{ width: 'auto' }}>
-                  <option value="seq">001/1 (ลำดับชนิด/หน้า)</option>
-                  <option value="cat">01/001/1 (ประเภท/ชนิด/หน้า)</option>
-                </select>
-                <label htmlFor="rGroup" className="sub" id="rGroupLbl" hidden>
-                  จัดกลุ่มตาม
-                </label>
-                <select id="rGroup" hidden>
-                  <option value="req">ผู้เบิก</option>
-                  <option value="purpose">เพื่อใช้ในงาน</option>
-                  <option value="cat">ประเภทวัสดุ</option>
-                </select>
-                <span className="sp"></span>
-                <button className="btn" id="btnPrintRep">
-                  พิมพ์รายงาน
-                </button>
-                <button className="btn primary" id="btnXlsx">
-                  ส่งออก Excel
-                </button>
+              <div className="repbar repbar-toolbar" style={{ marginBottom: 0 }}>
+                <div className="repbar-filters">
+                  <label htmlFor="rFy" className="sub">
+                    ปีงบประมาณ
+                  </label>
+                  <select id="rFy"></select>
+                  <label htmlFor="rMonth" className="sub" id="rMonthLbl">
+                    ช่วงเวลา
+                  </label>
+                  <select id="rMonth"></select>
+                  <label htmlFor="rMat" className="sub" id="rMatLbl" hidden>
+                    เลือกวัสดุ
+                  </label>
+                  <select id="rMat" hidden></select>
+                  <label htmlFor="rSheetFmt" className="sub" id="rSheetFmtLbl" hidden>
+                    รูปแบบแผ่นที่ (1)
+                  </label>
+                  <select id="rSheetFmt" hidden>
+                    <option value="seq">001/1 (ลำดับชนิด/หน้า)</option>
+                    <option value="cat">01/001/1 (ประเภท/ชนิด/หน้า)</option>
+                  </select>
+                  <label htmlFor="rGroup" className="sub" id="rGroupLbl" hidden>
+                    จัดกลุ่มตาม
+                  </label>
+                  <select id="rGroup" hidden>
+                    <option value="req">ผู้เบิก</option>
+                    <option value="purpose">เพื่อใช้ในงาน</option>
+                    <option value="cat">ประเภทวัสดุ</option>
+                  </select>
+                </div>
+                <div className="repbar-actions">
+                  <button className="btn" id="btnPrintRep">
+                    พิมพ์รายงาน
+                  </button>
+                  <button className="btn primary" id="btnXlsx">
+                    ส่งออก Excel
+                  </button>
+                </div>
               </div>
               <details className="vshead no-print" id="cardGuideBox" style={{ marginTop: 12 }} hidden>
                 <summary>คำอธิบายวิธีทำบัญชีวัสดุ (1) – (8) ตามแบบฟอร์มราชการ</summary>
@@ -1096,175 +1173,40 @@ export default function App() {
               <div className="card">
                 <div className="cardhead">
                   <div>
-                    <h3>รายงานวัสดุคงเหลือ (แบบ อปท. - วส.)</h3>
-                    <span className="sub">ณ วันสิ้นปีงบประมาณ สำหรับส่งรายกองหรือรวมทั้งหน่วยงาน</span>
+                    <h3>
+                      รายงานวัสดุคงเหลือประจำกอง (แบบ อปท. - วส.) — <span id="vDivName"></span>
+                    </h3>
+                    <span className="sub" id="vSelfSum"></span>
+                  </div>
+                  <div className="rowact no-print">
+                    <button type="button" className="btn small" onClick={() => switchTab('set')}>
+                      แก้ไขข้อมูลหน่วยงาน / ผู้ลงนาม
+                    </button>
                   </div>
                 </div>
                 <p className="hint">
-                  ขั้นที่ 1 แต่ละกองส่งออกไฟล์ Excel ของกองตนเอง &nbsp;&rarr;&nbsp; ขั้นที่ 2 ผู้รวบรวม (เช่น กองคลัง)
-                  แนบไฟล์ของทุกกองเพื่อออกรายงานรวมของทั้งหน่วยงาน
+                  แสดงเฉพาะวัสดุที่มียอดคงเหลือประจำกองตามที่ตั้งค่าไว้ โดยแยกรายการตามราคาทุนที่รับเข้าจริง (FIFO)
+                  ใช้ข้อมูลหน่วยงานและผู้ลงนามจากหน้า “ตั้งค่า / สำรองข้อมูล”
                 </p>
                 <div className="repbar" style={{ marginBottom: 10 }}>
                   <label htmlFor="vDate" className="sub">
                     ณ วันที่
                   </label>
                   <input id="vDate" type="date" style={{ width: 'auto' }} />
-                  <span className="sub">(ตั้งตามปีงบประมาณที่เลือกด้านบน)</span>
-                </div>
-                <details className="vshead">
-                  <summary>
-                    ตั้งค่าข้อมูลหัวรายงานและผู้ลงนาม <span className="sub" id="vHeadSum"></span>
-                  </summary>
-                  <div className="grid" style={{ marginTop: 12 }}>
-                    <label className="f c12">
-                      ชื่อหน่วยงาน (องค์กรปกครองส่วนท้องถิ่น)
-                      <input id="vOrg" />
-                    </label>
-                    <label className="f c4">
-                      อำเภอ
-                      <input id="vAmp" />
-                    </label>
-                    <label className="f c4">
-                      จังหวัด
-                      <input id="vChw" />
-                    </label>
-                    <label className="f c4">
-                      รหัสไปรษณีย์
-                      <input id="vZip" inputMode="numeric" maxLength={5} />
-                    </label>
-                    <label className="f c6">
-                      ชื่อเจ้าหน้าที่ประสานงาน
-                      <input id="vCo" />
-                    </label>
-                    <label className="f c6">
-                      ตำแหน่ง
-                      <input id="vCoPos" />
-                    </label>
-                    <label className="f c6">
-                      โทรศัพท์
-                      <input id="vTel" />
-                    </label>
-                    <label className="f c6">
-                      โทรสาร
-                      <input id="vFax" />
-                    </label>
-                    <label className="f c6">
-                      ผู้จัดทำ
-                      <input id="vMk" />
-                    </label>
-                    <label className="f c6">
-                      ตำแหน่งผู้จัดทำ
-                      <input id="vMkPos" />
-                    </label>
-                    <label className="f c6">
-                      ผู้อำนวยการกองคลัง
-                      <input id="vFin" />
-                    </label>
-                    <label className="f c6">
-                      ตำแหน่ง
-                      <input id="vFinPos" />
-                    </label>
-                    <label className="f c6">
-                      ปลัด
-                      <input id="vPal" />
-                    </label>
-                    <label className="f c6">
-                      ตำแหน่ง
-                      <input id="vPalPos" />
-                    </label>
-                    <label className="f c6">
-                      ผู้บริหาร
-                      <input id="vExe" />
-                    </label>
-                    <label className="f c6">
-                      ตำแหน่ง
-                      <input id="vExePos" />
-                    </label>
-                  </div>
-                  <div className="formbar" style={{ marginTop: 12 }}>
-                    <span className="msg" id="vHeadMsg"></span>
-                    <button type="button" className="btn primary" id="vHeadSave">
-                      บันทึกข้อมูลหัวรายงาน
-                    </button>
-                  </div>
-                </details>
-              </div>
-
-              <div className="card">
-                <div className="cardhead">
-                  <h3>
-                    ขั้นที่ 1 · รายงานของ<span id="vDivName"></span>
-                  </h3>
-                  <span className="sub" id="vSelfSum"></span>
-                </div>
-                <p className="hint">
-                  แสดงเฉพาะวัสดุที่มียอดคงเหลือ ณ วันที่เลือก โดยแยกรายการตามราคาที่รับเข้าจริง (FIFO)
-                </p>
-                <div className="formbar" style={{ borderTop: 0, paddingTop: 0 }}>
+                  <span className="sub" id="vHeadSum"></span>
+                  <span className="sp"></span>
                   <button type="button" className="btn" id="vSelfPrint">
-                    พิมพ์รายงานกอง
+                    ตัวอย่างก่อนพิมพ์ / พิมพ์รายงาน
                   </button>
                   <button type="button" className="btn primary" id="vSelfXlsx">
                     ส่งออก Excel (แบบ อปท.-วส.)
                   </button>
                 </div>
+                <div className="notice" id="vMissingSet" hidden style={{ marginBottom: 0 }}></div>
               </div>
 
-              <div className="card">
-                <div className="cardhead">
-                  <div>
-                    <h3>ขั้นที่ 2 · รวมรายงานทั้งหน่วยงาน</h3>
-                    <span className="sub">แนบไฟล์ Excel ของแต่ละกองได้หลายไฟล์พร้อมกัน</span>
-                  </div>
-                </div>
-                <p className="hint">
-                  รองรับไฟล์ที่ส่งออกจากระบบนี้ และไฟล์แบบ อปท.-วส. ที่กรอกใน Excel (ต้องมีคอลัมน์ รายการ · ปริมาณ ·
-                  หน่วยนับ · ราคาต่อหน่วย)
-                </p>
-                <div className="formbar" style={{ borderTop: 0, paddingTop: 0, justifyContent: 'flex-start' }}>
-                  <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', marginRight: 'auto' }}>
-                    <input type="checkbox" id="vSelf" defaultChecked style={{ width: 'auto' }} /> รวมข้อมูลของ
-                    <span id="vDivName2"></span> (ในเครื่องนี้) ด้วย
-                  </label>
-                  <label className="btn" htmlFor="vFiles" style={{ cursor: 'pointer' }}>
-                    แนบไฟล์ Excel ของแต่ละกอง…
-                  </label>
-                  <input
-                    id="vFiles"
-                    type="file"
-                    multiple
-                    accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    hidden
-                  />
-                </div>
-                <span className="msg" id="vMsg" style={{ display: 'block', margin: '6px 0' }}></span>
-                <div className="tablebox">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>ส่วนราชการ</th>
-                        <th>ที่มา</th>
-                        <th className="num">รายการ</th>
-                        <th className="num">จำนวนเงิน (บาท)</th>
-                        <th></th>
-                      </tr>
-                    </thead>
-                    <tbody id="vParts"></tbody>
-                    <tfoot id="vPartsFt"></tfoot>
-                  </table>
-                </div>
-                <div className="formbar" style={{ marginTop: 12 }}>
-                  <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer', marginRight: 'auto' }}>
-                    <input type="checkbox" id="vMerge" style={{ width: 'auto' }} /> รวมวัสดุชื่อ หน่วยนับ
-                    และราคาเดียวกันเป็นบรรทัดเดียว
-                  </label>
-                  <button type="button" className="btn" id="vAllPrint">
-                    พิมพ์รายงานรวม
-                  </button>
-                  <button type="button" className="btn primary" id="vAllXlsx">
-                    ส่งออก Excel รายงานรวม
-                  </button>
-                </div>
+              <div className="vs-preview-wrap">
+                <div className="paper vs-preview-paper" id="vsPreview"></div>
               </div>
             </div>
           </section>
@@ -1370,8 +1312,36 @@ export default function App() {
                       <option value="งานธุรการ" />
                     </datalist>
                     <label className="f c12">
-                      ชื่อหน่วยงาน <span className="req">*</span>
-                      <input id="gOrg" required placeholder="เช่น องค์การบริหารส่วนตำบล... อำเภอ... จังหวัด..." />
+                      ชื่อหน่วยงาน (องค์กรปกครองส่วนท้องถิ่น) <span className="req">*</span>
+                      <input id="gOrg" required placeholder="เช่น องค์การบริหารส่วนตำบล... (ระบุชื่อ อปท.)" />
+                    </label>
+                    <label className="f c4">
+                      อำเภอ
+                      <input id="gAmp" placeholder="เช่น เมืองนครราชสีมา" />
+                    </label>
+                    <label className="f c4">
+                      จังหวัด
+                      <input id="gChw" placeholder="เช่น นครราชสีมา" />
+                    </label>
+                    <label className="f c4">
+                      รหัสไปรษณีย์ (5 หลัก)
+                      <input id="gZip" inputMode="numeric" maxLength={5} placeholder="เช่น 30000" />
+                    </label>
+                    <label className="f c6">
+                      ชื่อเจ้าหน้าที่ประสานงาน
+                      <input id="gCo" placeholder="เว้นว่าง = ใช้ชื่อเจ้าหน้าที่/ผู้จ่ายของ" />
+                    </label>
+                    <label className="f c6">
+                      ตำแหน่งเจ้าหน้าที่ประสานงาน
+                      <input id="gCoPos" placeholder="เว้นว่าง = ใช้ตำแหน่งเจ้าหน้าที่" />
+                    </label>
+                    <label className="f c6">
+                      โทรศัพท์
+                      <input id="gTel" placeholder="หมายเลขโทรศัพท์ติดต่อ" />
+                    </label>
+                    <label className="f c6">
+                      โทรสาร
+                      <input id="gFax" placeholder="หมายเลขโทรสาร (ถ้ามี)" />
                     </label>
                     <datalist id="divList">
                       <option value="สำนักปลัด" />
@@ -1388,38 +1358,25 @@ export default function App() {
                   <legend>ผู้ลงนามในใบเบิกวัสดุและรายงาน</legend>
                   <div className="grid">
                     <label className="f c6">
-                      ผู้อนุมัติ
-                      <input id="gAppr" />
+                      ผู้อนุมัติ (ใบเบิกวัสดุ) / ผอ.กอง/สำนัก
+                      <input id="gAppr" placeholder="เช่น นางสาวทัตพิชา ผาลี" />
                     </label>
                     <label className="f c6">
-                      ตำแหน่งผู้อนุมัติ
+                      ตำแหน่งผู้อนุมัติ (แสดงหลัง "เรียน" และใต้ลายเซ็น)
                       <select id="gApprPos"></select>
-                      <input id="gApprPosX" placeholder="พิมพ์ตำแหน่งผู้อนุมัติ" hidden />
+                      <input id="gApprPosX" placeholder="พิมพ์ตำแหน่งผู้อนุมัติ / หัวหน้าส่วนราชการ" hidden />
                     </label>
                     <label className="f c6">
-                      ผู้จ่ายของ
-                      <input id="gPayer" />
+                      ผู้จ่าย / ผู้ควบคุมวัสดุ (และผู้จัดทำรายงาน)
+                      <input id="gStaff" placeholder="เช่น นางสาวสุดา รอบคอบ" />
                     </label>
                     <label className="f c6">
-                      ตำแหน่งผู้จ่ายของ
-                      <input id="gPayerPos" placeholder="เช่น เจ้าพนักงานพัสดุ" />
+                      ตำแหน่งผู้จ่าย / ผู้ควบคุมวัสดุ
+                      <input id="gStaffPos" placeholder="เว้นว่าง = ผู้ควบคุมวัสดุ ตามชื่อกอง/สำนักที่ตั้งค่า" />
                     </label>
-                    <label className="f c6">
-                      เจ้าหน้าที่ (ให้ความเห็น)
-                      <input id="gStaff" placeholder="เว้นว่าง = ใช้ชื่อผู้จ่ายของ" />
-                    </label>
-                    <label className="f c6">
-                      ตำแหน่งเจ้าหน้าที่
-                      <input id="gStaffPos" placeholder="เช่น เจ้าพนักงานพัสดุ" />
-                    </label>
-                    <label className="f c6">
-                      หัวหน้าเจ้าหน้าที่
-                      <input id="gHead" />
-                    </label>
-                    <label className="f c6">
-                      ตำแหน่งหัวหน้าเจ้าหน้าที่
-                      <input id="gHeadPos" placeholder="เช่น ผู้อำนวยการกองคลัง" />
-                    </label>
+                  </div>
+                  <div className="sub" style={{ marginTop: 8 }}>
+                    ข้อมูลผู้อนุมัติ (ผอ.กอง/สำนัก) และผู้จ่าย (ผู้ควบคุมวัสดุ) ด้านบนจะเชื่อมโยงไปยังใบเบิกวัสดุ รายงานสรุป และเป็นค่าเริ่มต้นของ แบบ อปท. - วส. อัตโนมัติ
                   </div>
                   <div style={{ marginTop: 14 }}>
                     <div className="sub" style={{ fontWeight: 600, marginBottom: 8 }}>
@@ -1430,54 +1387,61 @@ export default function App() {
                 </fieldset>
 
                 <fieldset className="form-section">
-                  <legend>โทนสีและโลโก้หน่วยงาน</legend>
+                  <legend>ผู้ลงนามรายงานวัสดุคงเหลือ (แบบ อปท. - วส.)</legend>
                   <div className="grid">
-                    <div className="c6">
-                      <div className="sub" style={{ fontWeight: 600, marginBottom: 8 }}>
-                        สีหลักของระบบ
-                      </div>
-                      <div className="swatches" id="swatches"></div>
-                      <div className="rowact" style={{ marginTop: 10, alignItems: 'center' }}>
-                        <label
-                          className="sub"
-                          htmlFor="themeCustom"
-                          style={{ display: 'flex', alignItems: 'center', gap: 8 }}
-                        >
-                          กำหนดสีเอง{' '}
-                          <input
-                            type="color"
-                            id="themeCustom"
-                            defaultValue="#d0f4de"
-                            style={{ width: 44, height: 32, padding: 2, cursor: 'pointer' }}
-                          />
+                    <label className="f c6">
+                      ผู้จัดทำรายงาน (ผู้ลงนามที่ 1)
+                      <input id="gVsMk" placeholder="เว้นว่าง = ใช้ชื่อผู้จ่าย/ผู้ควบคุมวัสดุด้านบน" />
+                    </label>
+                    <label className="f c6">
+                      ตำแหน่งผู้จัดทำ
+                      <input id="gVsMkPos" placeholder="เว้นว่าง = ใช้ตำแหน่งผู้จ่าย/ผู้ควบคุมวัสดุด้านบน" />
+                    </label>
+                    <label className="f c6">
+                      ผู้อำนวยการประจำกอง (ผู้ลงนามที่ 2)
+                      <input id="gVsFin" placeholder="เว้นว่าง = ใช้ชื่อผู้อนุมัติ/ผอ.กองด้านบน" />
+                    </label>
+                    <label className="f c6">
+                      ตำแหน่ง (ผู้ลงนามที่ 2)
+                      <input id="gVsFinPos" placeholder="เว้นว่าง = ใช้ตำแหน่งผู้อนุมัติ/ผอ.กองด้านบน" />
+                    </label>
+                    <label className="f c6">
+                      ปลัดองค์กรปกครองส่วนท้องถิ่น
+                      <input id="gVsPal" placeholder="ชื่อ-สกุล ปลัด อปท." />
+                    </label>
+                    <label className="f c6">
+                      ตำแหน่ง (ผู้ลงนามที่ 3)
+                      <input id="gVsPalPos" placeholder="ค่าเริ่มต้น: ปลัดองค์กรปกครองส่วนท้องถิ่น" />
+                    </label>
+                    <label className="f c6">
+                      ผู้บริหารองค์กรปกครองส่วนท้องถิ่น
+                      <input id="gVsExe" placeholder="ชื่อ-สกุล นายก อปท." />
+                    </label>
+                    <label className="f c6">
+                      ตำแหน่ง (ผู้ลงนามที่ 4)
+                      <input id="gVsExePos" placeholder="ค่าเริ่มต้น: ผู้บริหารองค์กรปกครองส่วนท้องถิ่น" />
+                    </label>
+                  </div>
+                </fieldset>
+
+                <fieldset className="form-section">
+                  <legend>โลโก้หน่วยงาน</legend>
+                  <div className="logobox">
+                    <div className="logoprev" id="logoPrev">
+                      ยังไม่มีโลโก้
+                    </div>
+                    <div style={{ display: 'grid', gap: 8, minWidth: 0 }}>
+                      <div className="rowact">
+                        <label className="btn" htmlFor="logoFile" style={{ cursor: 'pointer' }}>
+                          อัปโหลดรูปโลโก้…
                         </label>
-                        <button type="button" className="btn small" id="themeReset">
-                          ค่าเริ่มต้น
+                        <button type="button" className="btn danger" id="logoDel" hidden>
+                          ลบโลโก้
                         </button>
                       </div>
+                      <span className="sub">รองรับ PNG หรือ JPG (พื้นหลังโปร่งใสจะแสดงผลได้คมชัดที่สุด)</span>
                     </div>
-                    <div className="c6">
-                      <div className="sub" style={{ fontWeight: 600, marginBottom: 8 }}>
-                        โลโก้ประจำหน่วยงาน
-                      </div>
-                      <div className="logobox">
-                        <div className="logoprev" id="logoPrev">
-                          ยังไม่มีโลโก้
-                        </div>
-                        <div style={{ display: 'grid', gap: 8, minWidth: 0 }}>
-                          <div className="rowact">
-                            <label className="btn" htmlFor="logoFile" style={{ cursor: 'pointer' }}>
-                              อัปโหลดรูปโลโก้…
-                            </label>
-                            <button type="button" className="btn danger" id="logoDel" hidden>
-                              ลบโลโก้
-                            </button>
-                          </div>
-                          <span className="sub">รองรับ PNG หรือ JPG (พื้นหลังโปร่งใสจะแสดงผลได้คมชัดที่สุด)</span>
-                        </div>
-                        <input id="logoFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden />
-                      </div>
-                    </div>
+                    <input id="logoFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden />
                   </div>
                 </fieldset>
 

@@ -115,69 +115,13 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       true
     );
     sCat.value = [...sCat.options].some((o: any) => o.value === v) ? v : '';
-    $('catList').innerHTML = allCats()
-      .map((c) => `<option value="${esc(c)}">`)
-      .join('');
+    if ($('catList')) {
+      $('catList').innerHTML = allCats()
+        .map((c) => `<option value="${esc(c)}">`)
+        .join('');
+    }
   }
 
-  const THEMES: Array<[string, string]> = [
-    ['#d0f4de', 'เขียวมิ้นต์ (#D0F4DE เริ่มต้น)'],
-    ['#1d4e7a', 'น้ำเงิน'],
-    ['#1f6f78', 'เขียวน้ำทะเล'],
-    ['#2f6b3f', 'เขียวเข้ม'],
-    ['#5b3f8c', 'ม่วง'],
-    ['#8a2f3b', 'แดงเลือดหมู'],
-    ['#8a5a1c', 'น้ำตาลทอง'],
-  ];
-  const hex2rgb = (h: string) => {
-    h = h.replace('#', '');
-    return [0, 2, 4].map((i) => parseInt(h.substr(i, 2), 16));
-  };
-  const rgb2hex = (a: number[]) =>
-    '#' + a.map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('');
-  const cmix = (a: number[], b: number[], t: number) => a.map((v, i) => v + (b[i] - v) * t);
-  const clum = (a: number[]) => {
-    const c = a.map((v) => {
-      v /= 255;
-      return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
-    });
-    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
-  };
-  function applyTheme(h?: string) {
-    let st = document.getElementById('themeStyle');
-    if (!st) {
-      st = document.createElement('style');
-      st.id = 'themeStyle';
-      document.head.appendChild(st);
-    }
-    if (!h || !/^#[0-9a-f]{6}$/i.test(h) || h.toLowerCase() === '#d0f4de') {
-      st.textContent = '';
-      return;
-    }
-    let a = hex2rgb(h);
-    let k = 0;
-    while (1.05 / (clum(a) + 0.05) < 4.5 && k < 30) {
-      a = cmix(a, [0, 0, 0], 0.08);
-      k++;
-    }
-    const W = [255, 255, 255];
-    const L = `--ink:${rgb2hex(a)};--ink-soft:${rgb2hex(cmix(a, W, 0.88))};`;
-    st.textContent = `@media screen{:root{${L}}}`;
-  }
-  function renderSwatches() {
-    const sw = $('swatches');
-    if (!sw) return;
-    const cur = (settings.theme || THEMES[0][0]).toLowerCase();
-    sw.innerHTML =
-      THEMES.map(
-        ([c, n]) =>
-          `<button type="button" class="sw" data-theme-c="${c}" aria-pressed="${c === cur}" style="--c:${c}"><i></i>${n}</button>`
-      ).join('') +
-      (THEMES.some((t) => t[0] === cur)
-        ? ''
-        : `<button type="button" class="sw" aria-pressed="true" style="--c:${esc(cur)}"><i></i>สีที่เลือกเอง</button>`);
-    if ($('themeCustom')) $('themeCustom').value = cur;
-  }
   const fullOrg = () => [settings.work, settings.div, settings.org].filter(Boolean).join(' ');
   function renderLogo() {
     const p = $('logoPrev');
@@ -197,8 +141,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       } else d.div = '';
     }
     settings = d;
-    applyTheme(d.theme);
-    renderSwatches();
+    document.getElementById('themeStyle')?.remove();
     if ($('mastOrg')) $('mastOrg').textContent = [d.work, d.div, d.org].filter(Boolean).join(' · ');
     const lg = $('mastLogo');
     const lgFb = $('mastLogoFallback');
@@ -559,6 +502,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       if ($('activeViewTitle')) $('activeViewTitle').textContent = meta.title;
       if ($('activeViewSub')) $('activeViewSub').textContent = meta.sub;
     }
+    closeMatSugs();
     renderTab(t);
   }
   (window as any).showKumWatsaduTab = showTab;
@@ -846,7 +790,31 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     }
   });
 
+  let stockSubTab: 'dash' | 'list' = 'dash';
+  function setStockSubTab(tab: 'dash' | 'list') {
+    stockSubTab = tab;
+    const isList = tab === 'list';
+    document.querySelectorAll('[data-st]').forEach((b: any) => {
+      const active = b.dataset.st === tab;
+      b.setAttribute('aria-pressed', String(active));
+      b.setAttribute('aria-selected', String(active));
+    });
+    if ($('stockDashPanel')) $('stockDashPanel').hidden = isList;
+    if ($('stockListPanel')) $('stockListPanel').hidden = !isList;
+    ['ofCat', 'ofState', 'ofSearch'].forEach((id) => {
+      if ($(id)) $(id).hidden = !isList;
+    });
+  }
+  document.querySelectorAll('[data-st]').forEach((b: any) =>
+    b.addEventListener('click', () => {
+      const next = b.dataset.st === 'list' ? 'list' : 'dash';
+      setStockSubTab(next);
+      renderStock();
+    })
+  );
+
   function renderStock() {
+    setStockSubTab(stockSubTab);
     renderDash();
     const fyVal = $('sFy')?.value || String(CUR_FY);
     $('tCount').textContent =
@@ -1417,22 +1385,58 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
         .join('')}</w:tblBorders>`;
     const b: string[] = [];
     const I = d.info;
-    b.push(P(R('ใบเบิกวัสดุ', { b: 1, sz: 40 }), { jc: 'center' }));
-    b.push(P([R('ใบเบิกที่ '), F(d.no, 12)], { jc: 'right', after: 80 }));
-    b.push(P([R('เรื่อง  ขออนุมัติเบิก'), F(I.subj, 44)]));
-    b.push(P([R('เรียน  '), F(I.appr.p, 44)]));
-    b.push(P([R('ข้าพเจ้า'), F(I.req.n, 32), R('ขอเบิกวัสดุ'), F(I.kind, 28)], { first: 720 }));
-    b.push(P([R('เพื่อใช้ในการปฏิบัติราชการงาน'), F(d.purpose, 40), R('ดังต่อไปนี้')], { after: 120 }));
-    const W = [1000, 4256, 1450, 1450, 1350];
+    const org = I.orgName || '';
+    const dp = I.dateParts || { day: '', month: '', year: '' };
+    const Pl = (runs: any, o: any = {}) =>
+      `<w:p><w:pPr><w:spacing w:before="${o.before || 0}" w:after="${o.after || 0}"/>${
+        o.first ? `<w:ind w:firstLine="${o.first}"/>` : ''
+      }${o.left ? `<w:ind w:left="${o.left}"/>` : ''}${o.jc ? `<w:jc w:val="${o.jc}"/>` : ''}</w:pPr>${[].concat(
+        runs
+      ).join('')}</w:p>`;
+    const tcSpan = (w: number, span: number, inner: string, o: any = {}) =>
+      `<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/>${span > 1 ? `<w:gridSpan w:val="${span}"/>` : ''}${
+        o.bd ? cb : ''
+      }<w:vAlign w:val="center"/></w:tcPr>${inner}</w:tc>`;
+    b.push(P(R('ใบเบิกวัสดุ', { b: 1, sz: 40 }), { jc: 'center', after: 160 }));
+    b.push(
+      `<w:tbl><w:tblPr><w:tblW w:w="9506" w:type="dxa"/>${bd(
+        0
+      )}<w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid><w:gridCol w:w="4000"/><w:gridCol w:w="5506"/></w:tblGrid><w:tr>${tc(
+        4000,
+        Pl([R('ใบเบิกที่ '), F(d.no, 16)])
+      )}${tc(
+        5506,
+        Pl([R('เขียนที่'), org ? R(org) : R('.'.repeat(28))], { left: 1000 }) +
+          Pl([R('วันที่ '), F(dp.day, 6), R(' เดือน '), F(dp.month, 16), R(' พ.ศ. '), F(dp.year, 8)], {
+            before: 60,
+          })
+      )}</w:tr></w:tbl>`
+    );
+    b.push(P([R('เรียน  '), I.appr.p ? R(I.appr.p) : R('.'.repeat(30))], { before: 120, after: 100 }));
+    b.push(
+      P(
+        [
+          R('ด้วยข้าพเจ้า '),
+          F(I.req.n, 28),
+          R(' มีความประสงค์ขอเบิกวัสดุ'),
+          org ? R(org) : R('.'.repeat(26)),
+          R(' เพื่อใช้ในงาน '),
+          F(d.purpose, 34),
+          R(' ตามรายละเอียดดังต่อไปนี้'),
+        ],
+        { first: 720, after: 160 }
+      )
+    );
+    const W = [900, 4656, 1950, 2000];
     const items = I.items.slice();
     while (items.length < 10) items.push(null);
-    let t = `<w:tbl><w:tblPr><w:tblW w:w="${W.reduce((a, c) => a + c, 0)}" w:type="dxa"/>${bd(
+    let t = `<w:tbl><w:tblPr><w:tblW w:w="9506" w:type="dxa"/>${bd(
       1
     )}<w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid>${W.map((w) => `<w:gridCol w:w="${w}"/>`).join('')}</w:tblGrid>`;
     t +=
-      '<w:tr>' +
-      ['ลำดับที่', 'รายการ', 'จำนวนเบิก', 'จำนวนอนุมัติ', 'หมายเหตุ']
-        .map((h, i) => tc(W[i], cellP(h, { b: 1, jc: 'center' }), { fill: 'EEEEEE', bd: 1 }))
+      '<w:tr><w:trPr><w:trHeight w:val="400" w:hRule="atLeast"/></w:trPr>' +
+      ['ลำดับที่', 'รายการ', 'จำนวน', 'หมายเหตุ']
+        .map((h, i) => tc(W[i], cellP(h, { b: 1, jc: 'center' }), { bd: 1 }))
         .join('') +
       '</w:tr>';
     items.forEach((it: any, i: number) => {
@@ -1442,42 +1446,28 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
           tc(W[0], cellP(it ? String(i + 1) : '', { jc: 'center' }), { bd: 1 }),
           tc(W[1], cellP(it ? it.name : ''), { bd: 1 }),
           tc(W[2], cellP(it ? it.qty : '', { jc: 'center' }), { bd: 1 }),
-          tc(W[3], cellP(it ? it.qty : '', { jc: 'center' }), { bd: 1 }),
-          tc(W[4], cellP(it && i === 0 && d.note ? d.note : ''), { bd: 1 }),
+          tc(W[3], cellP(it && i === 0 && d.note ? d.note : ''), { bd: 1 }),
         ].join('') +
         '</w:tr>';
     });
+    t +=
+      '<w:tr><w:trPr><w:trHeight w:val="400" w:hRule="atLeast"/></w:trPr>' +
+      tcSpan(W[0] + W[1], 2, cellP('รวมทั้งหมด', { b: 1, jc: 'center' }), { bd: 1 }) +
+      tc(W[2], cellP(I.totalQtyText || '', { b: 1, jc: 'center' }), { bd: 1 }) +
+      tc(W[3], cellP(''), { bd: 1 }) +
+      '</w:tr>';
     t += '</w:tbl>';
     b.push(t);
-    const TAB = '<w:r><w:tab/></w:r>';
-    const TP = (runs: any, pos: number, o: any = {}) =>
-      `<w:p><w:pPr><w:tabs><w:tab w:val="${
-        o.tv || 'left'
-      }" w:leader="dot" w:pos="${pos}"/></w:tabs><w:spacing w:before="${o.before || 0}" w:after="0"/>${
-        o.ind ? `<w:ind w:left="${o.ind}"/>` : ''
-      }</w:pPr>${[].concat(runs).join('')}</w:p>`;
-    const C = (xStr: string, o: any = {}) => P(R(xStr, o), { jc: o.jc || 'center', before: o.before || 0 });
-    const SLn = (tt: string, bf: number) => TP([R('(ลงชื่อ)'), TAB, R(tt || '')], 3350, { ind: 200, before: bf });
-    const nm = (n: string) => (n ? C('(' + n + ')') : TP([R('('), TAB, R(')')], 3900, { ind: 600 })),
-      ps = (p: string) => (p ? C('ตำแหน่ง ' + p) : TP([R('ตำแหน่ง'), TAB], 3900, { ind: 600 }));
-    const DL = () => TP(TAB, 4550);
-    const opin = (h: string, o: any, bf: number) =>
-      [C(h, { b: 1, jc: 'left', before: bf }), DL(), DL(), SLn('', 100), nm(o.n), ps(o.p)].join('');
-    const sg = (tt: string, o: any, bf: number) => [SLn(tt, bf), nm(o.n), ps(o.p)].join('');
-    const Lc =
-      (sigOn('staff') ? opin('ความเห็นของเจ้าหน้าที่', I.staff, 160) : '') +
-      (sigOn('head') ? opin('ความเห็นหัวหน้าเจ้าหน้าที่', I.head, 160) : '') +
-      (sigOn('appr') ? SLn('', 240) + nm(I.appr.n) + ps(I.appr.p) + C('ผู้อนุมัติ') : '');
-    const Rt =
-      (sigOn('req') ? sg('ผู้เบิก', I.req, 160) : '') +
-      (sigOn('recv')
-        ? C('ได้รับของถูกต้องแล้ว', { before: 160 }) +
-          (I.date ? P([R('วันที่ '), F(I.date, 20)], { jc: 'center' }) : TP([R('วันที่'), TAB], 3600, { ind: 900 })) +
-          sg('ผู้รับของ', I.req, 160)
-        : '') +
-      (sigOn('payer') ? sg('ผู้จ่ายของ', I.payer, 160) : '');
-    const cols = [Lc, Rt].filter(Boolean),
-      SW = cols.length === 2 ? [4753, 4753] : [9506];
+    const sigName = (n: string) => P(R('(' + (n || '.'.repeat(30)) + ')'), { jc: 'center' });
+    const sigPosDot = (p: string) => P([R('ตำแหน่ง '), p ? R(p) : R('.'.repeat(28))], { jc: 'center' });
+    const leftCol = sigOn('req')
+      ? P(R('(ลงชื่อ)' + '.'.repeat(30) + 'ผู้เบิก'), { jc: 'center' }) + sigName(I.req.n) + sigPosDot(I.req.p)
+      : '';
+    const rightCol = sigOn('payer')
+      ? P(R('(ลงชื่อ)' + '.'.repeat(30) + 'ผู้จ่าย'), { jc: 'center' }) + sigName(I.payer.n) + sigPosDot(I.payer.p)
+      : '';
+    const cols = [leftCol, rightCol].filter(Boolean);
+    const SW = cols.length === 2 ? [4753, 4753] : [9506];
     if (cols.length)
       b.push(
         `<w:tbl><w:tblPr><w:tblW w:w="9506" w:type="dxa"/>${bd(
@@ -1488,6 +1478,11 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
           (w, k) => `<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/></w:tcPr>${cols[k]}</w:tc>`
         ).join('')}</w:tr></w:tbl>`
       );
+    if (sigOn('appr')) {
+      b.push(P([R('(ลงชื่อ)' + '.'.repeat(32) + 'ผู้อนุมัติ')], { jc: 'center', before: 280 }));
+      b.push(sigName(I.appr.n));
+      b.push(P([R('ตำแหน่ง   '), I.appr.p ? R(I.appr.p) : R('.'.repeat(28))], { jc: 'center' }));
+    }
     b.push(P(R('', { sz: 4 })));
     const doc = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${b.join(
       ''
@@ -1533,12 +1528,9 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
 
   let printMv: any = null;
   const SIGS: Array<[string, string]> = [
-    ['staff', 'ความเห็นเจ้าหน้าที่'],
-    ['head', 'ความเห็นหัวหน้าเจ้าหน้าที่'],
-    ['appr', 'ผู้อนุมัติ'],
     ['req', 'ผู้เบิก'],
-    ['recv', 'ผู้รับของ'],
-    ['payer', 'ผู้จ่ายของ'],
+    ['payer', 'ผู้จ่าย'],
+    ['appr', 'ผู้อนุมัติ'],
   ];
   function sigOn(k: string) {
     return (settings.slipSigs || {})[k] !== false;
@@ -1550,91 +1542,135 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
         ([k, l]) => `<label><input type="checkbox" data-sig="${k}"${sigOn(k) ? ' checked' : ''}> ${l}</label>`
       ).join('');
   }
-  function slipInfo(mv: any) {
-    const ms = (mv.lines || []).map((l: any) => matById(l.mid)).filter(Boolean);
-    const cats = [...new Set(ms.map((m: any) => m.cat).filter(Boolean))];
-    const st = settings.staff
-      ? { n: settings.staff, p: settings.staffPos }
-      : { n: settings.payer, p: settings.staffPos || settings.payerPos };
+  function splitThaiDate(iso: string) {
+    if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return { day: '', month: '', year: '' };
+    const [y, m, d] = iso.split('-');
     return {
-      subj: cats.length ? cats.join(', ') : 'วัสดุ',
-      kind: cats
-        .map((c: any) => String(c).replace(/^วัสดุ\s*/, ''))
-        .filter(Boolean)
-        .join(', '),
-      items: (mv.lines || []).map((l: any) => {
-        const m = matById(l.mid);
-        const q = fmtQ(l.qty) + (m?.unit ? ' ' + m.unit : '');
-        return { name: m ? matLabel(m) : '', qty: q };
-      }),
-      staff: st,
-      head: { n: settings.head, p: settings.headPos },
-      appr: { n: settings.appr, p: settings.apprPos },
-      payer: { n: settings.payer, p: settings.payerPos },
-      req: { n: mv.requester, p: mv.reqPos },
+      day: String(+d),
+      month: TH_MF[+m - 1] || '',
+      year: String(+y + 543),
+    };
+  }
+  function slipInfo(mv: any) {
+    const items = (mv.lines || []).map((l: any) => {
+      const m = matById(l.mid);
+      const rawQty = +l.qty || 0;
+      const unit = m?.unit || '';
+      const q = fmtQ(rawQty) + (unit ? ' ' + unit : '');
+      return { name: m ? matLabel(m) : '', qty: q, rawQty, unit };
+    });
+    const units = [...new Set(items.map((it: any) => it.unit).filter(Boolean))];
+    const totalQty = items.reduce((s: number, it: any) => s + it.rawQty, 0);
+    const totalQtyText = !items.length
+      ? ''
+      : units.length <= 1
+      ? fmtQ(totalQty) + (units[0] ? ' ' + units[0] : '')
+      : items.length + ' รายการ';
+    const orgName = orgParts().name;
+    const payerPos = settings.staffPos || settings.payerPos || settings.vsMkPos || defaultControllerPos();
+    const payerName = settings.staff || settings.payer || settings.vsMk || '';
+    return {
+      orgName,
+      items,
+      totalQtyText,
+      dateParts: splitThaiDate(mv.date),
+      staff: { n: payerName, p: payerPos },
+      payer: { n: payerName, p: payerPos },
+      appr: {
+        n: settings.appr || settings.vsFin || settings.head || '',
+        p: settings.apprPos || settings.vsFinPos || settings.headPos || defaultDivHeadPos(),
+      },
+      req: { n: mv.requester || '', p: mv.reqPos || '' },
       date: mv.date ? thDateFull(mv.date) : '',
     };
   }
   function slipHtml(mv: any) {
     const I = slipInfo(mv);
-    const F = (v: any, w: number) => `<span class="fl" style="min-width:${w}px">${esc(v || '') || '&nbsp;'}</span>`;
+    const F = (v: any, w: number) => `<span class="sl-fl" style="min-width:${w}px">${esc(v || '') || '&nbsp;'}</span>`;
     const items = I.items.slice();
     while (items.length < 10) items.push(null);
-    const dt = (w: number) => `<span class="dt" style="width:${w}em"></span>`,
-      D = dt(8),
-      SL = '(ลงชื่อ)' + dt(9);
-    const nm = (n: string) => `(${n ? esc(n) : dt(10)})`,
-      ps = (p: string) => `ตำแหน่ง ${p ? esc(p) : dt(8)}`;
-    const opin = (h: string, o: any) =>
-      `<div class="blk"><div class="hd">${h}</div><div class="dl"></div><div class="dl"></div><div style="margin-top:8px">${SL}</div><div>${nm(
-        o.n
-      )}</div><div>${ps(o.p)}</div></div>`;
-    const sg = (t: string, o: any) =>
-      `<div class="blk"><div>${SL}${t}</div><div>${nm(o.n)}</div><div>${ps(o.p)}</div></div>`;
-    return `${settings.logo ? `<img class="lg" src="${esc(settings.logo)}" alt="">` : ''}
-  <p class="ttl">ใบเบิกวัสดุ</p>
-  <p class="r" style="margin-bottom:6px">ใบเบิกที่ ${F(mv.no, 110)}</p>
-  <div class="rq"><p>เรื่อง&nbsp; ขออนุมัติเบิก ${F(I.subj, 300)}</p>
-  <p>เรียน&nbsp; ${F(I.appr.p, 300)}</p>
-  <p style="text-indent:48px">ข้าพเจ้า ${F(I.req.n, 220)} ขอเบิกวัสดุ ${F(I.kind, 200)}</p>
-  <p>เพื่อใช้ในการปฏิบัติราชการงาน ${F(mv.purpose, 300)} ดังต่อไปนี้</p></div>
-  <table class="sl"><thead><tr><th style="width:72px;white-space:nowrap">ลำดับที่</th><th>รายการ</th><th style="width:112px">จำนวนเบิก</th><th style="width:112px">จำนวนอนุมัติ</th><th style="width:110px">หมายเหตุ</th></tr></thead>
-  <tbody>${items
-    .map(
-      (it: any, i: number) =>
-        `<tr><td class="cn">${it ? i + 1 : ''}</td><td>${it ? esc(it.name) : ''}</td><td class="cn">${
-          it ? esc(it.qty) : ''
-        }</td><td class="cn">${it ? esc(it.qty) : ''}</td><td>${it && i === 0 && mv.note ? esc(mv.note) : ''}</td></tr>`
-    )
-    .join('')}</tbody></table>
-  ${(() => {
-    const Lc =
-      (sigOn('staff') ? opin('ความเห็นของเจ้าหน้าที่', I.staff) : '') +
-      (sigOn('head') ? opin('ความเห็นหัวหน้าเจ้าหน้าที่', I.head) : '') +
-      (sigOn('appr')
-        ? `<div class="blk" style="margin-top:6px"><div>${SL}</div><div>${nm(I.appr.n)}</div><div>${ps(
-            I.appr.p
-          )}</div><div>ผู้อนุมัติ</div></div>`
-        : '');
-    const Rc =
-      (sigOn('req') ? sg('ผู้เบิก', I.req) : '') +
-      (sigOn('recv')
-        ? `<div class="blk"><div>ได้รับของถูกต้องแล้ว</div><div>วันที่ ${
-            I.date ? F(I.date, 170) : D
-          }</div></div>${sg('ผู้รับของ', I.req)}`
-        : '') +
-      (sigOn('payer') ? sg('ผู้จ่ายของ', I.payer) : '');
-    const cs = [Lc, Rc].filter(Boolean);
-    return cs.length
-      ? `<div class="sg2" style="grid-template-columns:${
-          cs.length === 2 ? 'minmax(0,1fr) minmax(0,1fr)' : 'minmax(0,1fr)'
-        }">${cs
+    const dt = (w: number) => `<span class="dt" style="width:${w}em"></span>`;
+    const org = I.orgName;
+    const dp = I.dateParts;
+    const topCols = [
+      sigOn('req')
+        ? `<div class="sl-sig-col">
+            <div>(ลงชื่อ)${dt(10.5)}ผู้เบิก</div>
+            <div>(${I.req.n ? `<span class="sl-sig-nm">${esc(I.req.n)}</span>` : dt(10.5)})</div>
+            <div>ตำแหน่ง <span class="sl-sig-pos">${I.req.p ? esc(I.req.p) : '&nbsp;'}</span></div>
+          </div>`
+        : '',
+      sigOn('payer')
+        ? `<div class="sl-sig-col">
+            <div>(ลงชื่อ)${dt(10.5)}ผู้จ่าย</div>
+            <div>(${I.payer.n ? `<span class="sl-sig-nm">${esc(I.payer.n)}</span>` : dt(10.5)})</div>
+            <div>ตำแหน่ง <span class="sl-sig-pos">${I.payer.p ? esc(I.payer.p) : '&nbsp;'}</span></div>
+          </div>`
+        : '',
+    ].filter(Boolean);
+
+    return `<div class="slform">
+      <p class="ttl">ใบเบิกวัสดุ</p>
+      <div class="sl-top-row">
+        <div class="sl-no">ใบเบิกที่ ${F(mv.no, 120)}</div>
+        <div class="sl-write">เขียนที่${org ? esc(org) : dt(12)}</div>
+      </div>
+      <div class="sl-date-row">
+        <div></div>
+        <div class="sl-date-parts">
+          <span>วันที่</span><span class="sl-dval" style="flex:0.75">${esc(dp.day) || '&nbsp;'}</span>
+          <span>เดือน</span><span class="sl-dval" style="flex:1.65">${esc(dp.month) || '&nbsp;'}</span>
+          <span>พ.ศ.</span><span class="sl-dval" style="flex:0.9">${esc(dp.year) || '&nbsp;'}</span>
+        </div>
+      </div>
+      <p class="sl-dear">เรียน&nbsp;&nbsp;${I.appr.p ? esc(I.appr.p) : dt(13)}</p>
+      <p class="sl-intro">ด้วยข้าพเจ้า${F(I.req.n, 230)}มีความประสงค์ขอเบิกวัสดุ${
+        org ? esc(org) : dt(12)
+      } เพื่อใช้ในงาน${F(mv.purpose, 250)}ตามรายละเอียดดังต่อไปนี้</p>
+      <table class="sl-table">
+        <thead>
+          <tr>
+            <th style="width:66px;white-space:nowrap">ลำดับที่</th>
+            <th>รายการ</th>
+            <th style="width:120px">จำนวน</th>
+            <th style="width:148px">หมายเหตุ</th>
+          </tr>
+        </thead>
+        <tbody>${items
           .map(
-            (c) => `<div class="col"${cs.length === 1 ? ' style="max-width:420px;margin:0 auto;width:100%"' : ''}>${c}</div>`
+            (it: any, i: number) =>
+              `<tr><td class="cn">${it ? i + 1 : ''}</td><td>${it ? esc(it.name) : ''}</td><td class="cn">${
+                it ? esc(it.qty) : ''
+              }</td><td>${it && i === 0 && mv.note ? esc(mv.note) : ''}</td></tr>`
           )
-          .join('')}</div>`
-      : '';
-  })()}`;
+          .join('')}</tbody>
+        <tfoot>
+          <tr>
+            <td colspan="2" class="cn">รวมทั้งหมด</td>
+            <td class="cn">${esc(I.totalQtyText)}</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+      ${
+        topCols.length
+          ? `<div class="sl-top-sigs" style="grid-template-columns:${
+              topCols.length === 2 ? 'minmax(0,1fr) minmax(0,1fr)' : 'minmax(0,1fr)'
+            }">${topCols.join('')}</div>`
+          : ''
+      }
+      ${
+        sigOn('appr')
+          ? `<div class="sl-bot-appr">
+              <div>(ลงชื่อ)${dt(11.5)}ผู้อนุมัติ</div>
+              <div>(${I.appr.n ? `<span class="sl-sig-nm">${esc(I.appr.n)}</span>` : dt(11.5)})</div>
+              <div>ตำแหน่ง ${
+                I.appr.p ? `<span class="sl-sig-pos-plain">${esc(I.appr.p)}</span>` : dt(11.5)
+              }</div>
+            </div>`
+          : ''
+      }
+    </div>`;
   }
   function hasTHS() {
     try {
@@ -1779,6 +1815,10 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       openPaper('รายงานสรุปการเบิกวัสดุ แยกตาม' + gl + ' — ' + p.label, issuePaperHtml(p), true);
       return;
     }
+    if (repKind === 'vs') {
+      openPaper('แบบ อปท.-วส. ' + divName(), vsHtml(vsSelfItems(), 'ส่วนราชการ ' + divName()), false);
+      return;
+    }
     applyPrintPageRule(true);
     document.body.classList.add('pr-rep');
     void document.body.offsetHeight;
@@ -1798,8 +1838,553 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     saveFile('ใบเบิกวัสดุ_' + mv.no.replace('/', '-') + '.docx', blob, 'ดาวน์โหลดใบเบิก ' + mv.no + ' แล้ว');
   }
 
+  const RECENT_CATS_KEY = 'kumwatsadu-recent-cats-v1';
+  const RECENT_UNITS_KEY = 'kumwatsadu-recent-units-v1';
+  const MAT_SUGGESTIONS: Array<{ name: string; cat: string; unit: string }> = [
+    // วัสดุก่อสร้าง
+    { name: 'ยางมะตอยสำเร็จรูป', cat: 'วัสดุก่อสร้าง', unit: 'ถุง' },
+    { name: 'ปูนซีเมนต์ปอร์ตแลนด์', cat: 'วัสดุก่อสร้าง', unit: 'ถุง' },
+    { name: 'ปูนซีเมนต์สำเร็จรูป (มอร์ตาร์)', cat: 'วัสดุก่อสร้าง', unit: 'ถุง' },
+    { name: 'ทรายหยาบ', cat: 'วัสดุก่อสร้าง', unit: 'คิว' },
+    { name: 'หินคลุก', cat: 'วัสดุก่อสร้าง', unit: 'คิว' },
+    { name: 'อิฐบล็อก', cat: 'วัสดุก่อสร้าง', unit: 'ก้อน' },
+    { name: 'เหล็กเส้นกลม 6 มม.', cat: 'วัสดุก่อสร้าง', unit: 'เส้น' },
+    { name: 'เหล็กเส้นข้ออ้อย 12 มม.', cat: 'วัสดุก่อสร้าง', unit: 'เส้น' },
+    { name: 'ลวดผูกเหล็ก', cat: 'วัสดุก่อสร้าง', unit: 'กิโลกรัม' },
+    { name: 'สีน้ำอะครีลิคทาภายนอก', cat: 'วัสดุก่อสร้าง', unit: 'ถัง' },
+    { name: 'สีน้ำมันเคลือบเงา', cat: 'วัสดุก่อสร้าง', unit: 'กระป๋อง' },
+    { name: 'แผ่นยิปซัมบอร์ด', cat: 'วัสดุก่อสร้าง', unit: 'แผ่น' },
+    // วัสดุสำนักงาน
+    { name: 'กระดาษถ่ายเอกสาร A4 80 แกรม', cat: 'วัสดุสำนักงาน', unit: 'รีม' },
+    { name: 'กระดาษถ่ายเอกสาร A4 70 แกรม', cat: 'วัสดุสำนักงาน', unit: 'รีม' },
+    { name: 'กระดาษโน้ตกาวในตัว', cat: 'วัสดุสำนักงาน', unit: 'เล่ม' },
+    { name: 'ปากกาลูกลื่นหมึกน้ำเงิน', cat: 'วัสดุสำนักงาน', unit: 'ด้าม' },
+    { name: 'ปากกาลูกลื่นหมึกแดง', cat: 'วัสดุสำนักงาน', unit: 'ด้าม' },
+    { name: 'ปากกาเคมีลบไม่ได้', cat: 'วัสดุสำนักงาน', unit: 'ด้าม' },
+    { name: 'ปากกาเน้นข้อความ', cat: 'วัสดุสำนักงาน', unit: 'ด้าม' },
+    { name: 'ดินสอดำ 2B', cat: 'วัสดุสำนักงาน', unit: 'แท่ง' },
+    { name: 'ยางลบดินสอ', cat: 'วัสดุสำนักงาน', unit: 'ก้อน' },
+    { name: 'น้ำยาลบคำผิด', cat: 'วัสดุสำนักงาน', unit: 'ขวด' },
+    { name: 'ลวดเย็บกระดาษ เบอร์ 10', cat: 'วัสดุสำนักงาน', unit: 'กล่อง' },
+    { name: 'แฟ้มสันกว้าง 3 นิ้ว', cat: 'วัสดุสำนักงาน', unit: 'เล่ม' },
+    { name: 'ซองเอกสารสีน้ำตาล A4', cat: 'วัสดุสำนักงาน', unit: 'ซอง' },
+    { name: 'เทปใสแกนใหญ่', cat: 'วัสดุสำนักงาน', unit: 'ม้วน' },
+    { name: 'กาวแท่ง', cat: 'วัสดุสำนักงาน', unit: 'แท่ง' },
+    // วัสดุไฟฟ้าและวิทยุ
+    { name: 'หลอดไฟ LED 18W', cat: 'วัสดุไฟฟ้าและวิทยุ', unit: 'หลอด' },
+    { name: 'หลอดไฟ LED T8 18W', cat: 'วัสดุไฟฟ้าและวิทยุ', unit: 'หลอด' },
+    { name: 'หลอดไฟถนน LED 50W', cat: 'วัสดุไฟฟ้าและวิทยุ', unit: 'หลอด' },
+    { name: 'สายไฟ THW 1x2.5 ตร.มม.', cat: 'วัสดุไฟฟ้าและวิทยุ', unit: 'ม้วน' },
+    { name: 'สายไฟ VAF 2x2.5 ตร.มม.', cat: 'วัสดุไฟฟ้าและวิทยุ', unit: 'ม้วน' },
+    { name: 'เบรกเกอร์ 30A', cat: 'วัสดุไฟฟ้าและวิทยุ', unit: 'ตัว' },
+    { name: 'ปลั๊กกราวด์คู่พร้อมหน้ากาก', cat: 'วัสดุไฟฟ้าและวิทยุ', unit: 'ชุด' },
+    { name: 'สวิตช์ทางเดียว', cat: 'วัสดุไฟฟ้าและวิทยุ', unit: 'อัน' },
+    { name: 'เทปพันสายไฟ', cat: 'วัสดุไฟฟ้าและวิทยุ', unit: 'ม้วน' },
+    { name: 'รางสายไฟ PVC', cat: 'วัสดุไฟฟ้าและวิทยุ', unit: 'เส้น' },
+    { name: 'ถ่านไฟฉาย AA', cat: 'วัสดุไฟฟ้าและวิทยุ', unit: 'ก้อน' },
+    // วัสดุประปา
+    { name: 'ท่อ PVC ขนาด 1/2 นิ้ว ชั้น 13.5', cat: 'วัสดุประปา', unit: 'ท่อน' },
+    { name: 'ท่อ PVC ขนาด 1 นิ้ว ชั้น 13.5', cat: 'วัสดุประปา', unit: 'ท่อน' },
+    { name: 'ท่อ PVC ขนาด 2 นิ้ว ชั้น 8.5', cat: 'วัสดุประปา', unit: 'ท่อน' },
+    { name: 'ท่อ PVC ขนาด 4 นิ้ว ชั้น 8.5', cat: 'วัสดุประปา', unit: 'ท่อน' },
+    { name: 'ข้อต่อตรง PVC 1/2 นิ้ว', cat: 'วัสดุประปา', unit: 'อัน' },
+    { name: 'ข้องอ 90 องศา PVC 1/2 นิ้ว', cat: 'วัสดุประปา', unit: 'อัน' },
+    { name: 'ก๊อกน้ำบอลวาล์ว 1/2 นิ้ว', cat: 'วัสดุประปา', unit: 'ตัว' },
+    { name: 'เทปพันเกลียว', cat: 'วัสดุประปา', unit: 'ม้วน' },
+    { name: 'กาวทาท่อ PVC', cat: 'วัสดุประปา', unit: 'กระป๋อง' },
+    { name: 'ประตูน้ำทองเหลือง 1 นิ้ว', cat: 'วัสดุประปา', unit: 'ตัว' },
+    // วัสดุคอมพิวเตอร์
+    { name: 'หมึกพิมพ์เลเซอร์ดำ (Toner)', cat: 'วัสดุคอมพิวเตอร์', unit: 'ตลับ' },
+    { name: 'หมึกเติมเครื่องพิมพ์อิงค์เจ็ท', cat: 'วัสดุคอมพิวเตอร์', unit: 'ขวด' },
+    { name: 'แฟลชไดรฟ์ 32 GB', cat: 'วัสดุคอมพิวเตอร์', unit: 'อัน' },
+    { name: 'เมาส์ไร้สาย', cat: 'วัสดุคอมพิวเตอร์', unit: 'อัน' },
+    { name: 'คีย์บอร์ด USB', cat: 'วัสดุคอมพิวเตอร์', unit: 'อัน' },
+    { name: 'สายแลน CAT6 สำเร็จรูป', cat: 'วัสดุคอมพิวเตอร์', unit: 'เส้น' },
+    { name: 'ปลั๊กพ่วงป้องกันไฟกระชาก', cat: 'วัสดุคอมพิวเตอร์', unit: 'อัน' },
+    { name: 'แผ่นรองเมาส์', cat: 'วัสดุคอมพิวเตอร์', unit: 'แผ่น' },
+    // วัสดุงานบ้านงานครัว
+    { name: 'น้ำยาล้างห้องน้ำ', cat: 'วัสดุงานบ้านงานครัว', unit: 'ขวด' },
+    { name: 'น้ำยาถูพื้น', cat: 'วัสดุงานบ้านงานครัว', unit: 'แกลลอน' },
+    { name: 'น้ำยาล้างจาน', cat: 'วัสดุงานบ้านงานครัว', unit: 'แกลลอน' },
+    { name: 'ผงซักฟอก', cat: 'วัสดุงานบ้านงานครัว', unit: 'ถุง' },
+    { name: 'ถุงขยะดำ 30x40 นิ้ว', cat: 'วัสดุงานบ้านงานครัว', unit: 'แพ็ค' },
+    { name: 'กระดาษชำระม้วนใหญ่', cat: 'วัสดุงานบ้านงานครัว', unit: 'ม้วน' },
+    { name: 'กระดาษเช็ดมือ', cat: 'วัสดุงานบ้านงานครัว', unit: 'ห่อ' },
+    { name: 'ไม้กวาดดอกหญ้า', cat: 'วัสดุงานบ้านงานครัว', unit: 'ด้าม' },
+    { name: 'ไม้ถูพื้นไมโครไฟเบอร์', cat: 'วัสดุงานบ้านงานครัว', unit: 'อัน' },
+    { name: 'สเปรย์ปรับอากาศ', cat: 'วัสดุงานบ้านงานครัว', unit: 'กระป๋อง' },
+    // วัสดุยานพาหนะและขนส่ง
+    { name: 'น้ำมันเครื่องดีเซล 15W-40', cat: 'วัสดุยานพาหนะและขนส่ง', unit: 'ลิตร' },
+    { name: 'น้ำมันเครื่องเบนซิน 10W-30', cat: 'วัสดุยานพาหนะและขนส่ง', unit: 'ลิตร' },
+    { name: 'กรองน้ำมันเครื่อง', cat: 'วัสดุยานพาหนะและขนส่ง', unit: 'ลูก' },
+    { name: 'กรองอากาศรถยนต์', cat: 'วัสดุยานพาหนะและขนส่ง', unit: 'อัน' },
+    { name: 'ยางรถยนต์', cat: 'วัสดุยานพาหนะและขนส่ง', unit: 'เส้น' },
+    { name: 'แบตเตอรี่รถยนต์ 12V', cat: 'วัสดุยานพาหนะและขนส่ง', unit: 'ลูก' },
+    { name: 'ใบปัดน้ำฝน', cat: 'วัสดุยานพาหนะและขนส่ง', unit: 'อัน' },
+    { name: 'น้ำยาหล่อเย็นหม้อน้ำ', cat: 'วัสดุยานพาหนะและขนส่ง', unit: 'แกลลอน' },
+    // วัสดุเชื้อเพลิงและหล่อลื่น
+    { name: 'น้ำมันดีเซล', cat: 'วัสดุเชื้อเพลิงและหล่อลื่น', unit: 'ลิตร' },
+    { name: 'น้ำมันแก๊สโซฮอล์ 95', cat: 'วัสดุเชื้อเพลิงและหล่อลื่น', unit: 'ลิตร' },
+    { name: 'น้ำมันแก๊สโซฮอล์ 91', cat: 'วัสดุเชื้อเพลิงและหล่อลื่น', unit: 'ลิตร' },
+    { name: 'จาระบีหล่อลื่นอเนกประสงค์', cat: 'วัสดุเชื้อเพลิงและหล่อลื่น', unit: 'กิโลกรัม' },
+    { name: 'น้ำมันไฮดรอลิค เบอร์ 68', cat: 'วัสดุเชื้อเพลิงและหล่อลื่น', unit: 'ถัง' },
+    { name: 'น้ำมันอเนกประสงค์ (สเปรย์หล่อลื่น)', cat: 'วัสดุเชื้อเพลิงและหล่อลื่น', unit: 'กระป๋อง' },
+    // วัสดุการเกษตร
+    { name: 'ปุ๋ยเคมีสูตร 15-15-15', cat: 'วัสดุการเกษตร', unit: 'กระสอบ' },
+    { name: 'ปุ๋ยอินทรีย์อัดเม็ด', cat: 'วัสดุการเกษตร', unit: 'กระสอบ' },
+    { name: 'สายยางรดน้ำ 5/8 นิ้ว', cat: 'วัสดุการเกษตร', unit: 'เมตร' },
+    { name: 'บัวรดน้ำพลาสติก', cat: 'วัสดุการเกษตร', unit: 'ใบ' },
+    { name: 'ถุงเพาะชำสีดำ', cat: 'วัสดุการเกษตร', unit: 'แพ็ค' },
+    { name: 'เอ็นตัดหญ้า', cat: 'วัสดุการเกษตร', unit: 'ม้วน' },
+    { name: 'ใบมีดเครื่องตัดหญ้า', cat: 'วัสดุการเกษตร', unit: 'ใบ' },
+    // วัสดุวิทยาศาสตร์หรือการแพทย์
+    { name: 'หน้ากากอนามัยทางการแพทย์', cat: 'วัสดุวิทยาศาสตร์หรือการแพทย์', unit: 'กล่อง' },
+    { name: 'แอลกอฮอล์ล้างมือ 70%', cat: 'วัสดุวิทยาศาสตร์หรือการแพทย์', unit: 'แกลลอน' },
+    { name: 'ถุงมือยางตรวจโรค', cat: 'วัสดุวิทยาศาสตร์หรือการแพทย์', unit: 'กล่อง' },
+    { name: 'ชุดปฐมพยาบาลเบื้องต้น', cat: 'วัสดุวิทยาศาสตร์หรือการแพทย์', unit: 'ชุด' },
+    { name: 'น้ำยาฆ่าเชื้อ', cat: 'วัสดุวิทยาศาสตร์หรือการแพทย์', unit: 'แกลลอน' },
+    { name: 'ชุดตรวจคลอรีนในน้ำ', cat: 'วัสดุวิทยาศาสตร์หรือการแพทย์', unit: 'ชุด' },
+    // วัสดุเครื่องแต่งกาย
+    { name: 'เสื้อสะท้อนแสงจราจร', cat: 'วัสดุเครื่องแต่งกาย', unit: 'ตัว' },
+    { name: 'ถุงมือผ้าเคลือบยาง', cat: 'วัสดุเครื่องแต่งกาย', unit: 'คู่' },
+    { name: 'รองเท้าบูทยางกันลื่น', cat: 'วัสดุเครื่องแต่งกาย', unit: 'คู่' },
+    { name: 'หมวกนิรภัย (เซฟตี้)', cat: 'วัสดุเครื่องแต่งกาย', unit: 'ใบ' },
+    { name: 'เสื้อกันฝน', cat: 'วัสดุเครื่องแต่งกาย', unit: 'ชุด' },
+    { name: 'แว่นตานิรภัย', cat: 'วัสดุเครื่องแต่งกาย', unit: 'อัน' },
+    // วัสดุการศึกษา
+    { name: 'กระดาษฟลิปชาร์ท', cat: 'วัสดุการศึกษา', unit: 'ม้วน' },
+    { name: 'ปากกาไวท์บอร์ด', cat: 'วัสดุการศึกษา', unit: 'ด้าม' },
+    { name: 'แปรงลบกระดานไวท์บอร์ด', cat: 'วัสดุการศึกษา', unit: 'อัน' },
+    { name: 'ฟิวเจอร์บอร์ด', cat: 'วัสดุการศึกษา', unit: 'แผ่น' },
+    { name: 'กระดาษสี A4', cat: 'วัสดุการศึกษา', unit: 'รีม' },
+    // วัสดุอื่น
+    { name: 'กุญแจคล้องสายยู 50 มม.', cat: 'วัสดุอื่น', unit: 'ชุด' },
+    { name: 'เชือกไนลอน', cat: 'วัสดุอื่น', unit: 'ม้วน' },
+    { name: 'ผ้าใบกันฝน', cat: 'วัสดุอื่น', unit: 'ผืน' },
+    { name: 'ป้ายไวนิลประชาสัมพันธ์', cat: 'วัสดุอื่น', unit: 'แผ่น' },
+  ];
+  const COMMON_UNITS = [
+    'ถุง',
+    'กระสอบ',
+    'ถัง',
+    'แกลลอน',
+    'ลิตร',
+    'ขวด',
+    'กระป๋อง',
+    'กิโลกรัม',
+    'ตัน',
+    'คิว',
+    'ท่อน',
+    'เส้น',
+    'แผ่น',
+    'ม้วน',
+    'หลอด',
+    'รีม',
+    'ด้าม',
+    'แท่ง',
+    'ก้อน',
+    'เล่ม',
+    'กล่อง',
+    'ตลับ',
+    'ซอง',
+    'ห่อ',
+    'แพ็ค',
+    'ชุด',
+    'อัน',
+    'ตัว',
+    'ลูก',
+    'ใบ',
+    'คู่',
+    'ผืน',
+    'เมตร',
+  ];
+
+  function readRecentList(key: string): string[] {
+    try {
+      const raw = JSON.parse(localStorage.getItem(key) || '[]');
+      if (!Array.isArray(raw)) return [];
+      return raw.map((x) => String(x || '').trim()).filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+  function writeRecentList(key: string, items: string[]) {
+    try {
+      localStorage.setItem(key, JSON.stringify(items.slice(0, 24)));
+    } catch {}
+  }
+  function getRecentCats(): string[] {
+    const stored = readRecentList(RECENT_CATS_KEY);
+    const seen = new Set(stored);
+    const fromMats = materials
+      .slice()
+      .sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')))
+      .map((m) => String(m.cat || '').trim())
+      .filter((c) => c && !seen.has(c) && (seen.add(c), true));
+    return [...stored, ...fromMats];
+  }
+  function touchRecentCat(cat: string) {
+    const c = String(cat || '').trim().replace(/\s+/g, ' ');
+    if (!c) return;
+    const prev = readRecentList(RECENT_CATS_KEY).filter((x) => x !== c);
+    writeRecentList(RECENT_CATS_KEY, [c, ...prev]);
+  }
+  function getRecentUnits(): string[] {
+    const stored = readRecentList(RECENT_UNITS_KEY);
+    const seen = new Set(stored);
+    const fromMats = materials
+      .slice()
+      .sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')))
+      .map((m) => String(m.unit || '').trim())
+      .filter((u) => u && !seen.has(u) && (seen.add(u), true));
+    return [...stored, ...fromMats];
+  }
+  function touchRecentUnit(unit: string) {
+    const u = String(unit || '').trim();
+    if (!u) return;
+    const prev = readRecentList(RECENT_UNITS_KEY).filter((x) => x !== u);
+    writeRecentList(RECENT_UNITS_KEY, [u, ...prev]);
+  }
+
+  let unitAutoFilled = false;
+  const matSugKeys: Array<{ inputId: string; boxId: string; btnId: string }> = [
+    { inputId: 'mName', boxId: 'mNameSug', btnId: 'mNameSugBtn' },
+    { inputId: 'mCat', boxId: 'mCatSug', btnId: 'mCatSugBtn' },
+    { inputId: 'mUnit', boxId: 'mUnitSug', btnId: 'mUnitSugBtn' },
+  ];
+  let sugActiveIdx = -1;
+
+  function closeMatSugs(exceptBoxId?: string) {
+    matSugKeys.forEach(({ inputId, boxId, btnId }) => {
+      if (boxId === exceptBoxId) return;
+      const box = $(boxId);
+      const inp = $(inputId);
+      const btn = $(btnId);
+      if (box) box.hidden = true;
+      if (inp) inp.setAttribute('aria-expanded', 'false');
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+    });
+    if (!exceptBoxId) sugActiveIdx = -1;
+  }
+
+  function highlightMatch(text: string, q: string) {
+    const clean = q.trim();
+    if (!clean) return esc(text);
+    const lowText = text.toLowerCase();
+    const lowQ = clean.toLowerCase();
+    const idx = lowText.indexOf(lowQ);
+    if (idx < 0) return esc(text);
+    return (
+      esc(text.slice(0, idx)) +
+      `<mark class="sug-hl">${esc(text.slice(idx, idx + clean.length))}</mark>` +
+      esc(text.slice(idx + clean.length))
+    );
+  }
+
+  function categoryRankFn() {
+    const recent = getRecentCats();
+    const curCat = ($('mCat')?.value || '').trim().replace(/\s+/g, ' ');
+    const rankMap = new Map<string, number>();
+    let r = 10;
+    recent.forEach((c) => {
+      if (!rankMap.has(c)) rankMap.set(c, r++);
+    });
+    allCats().forEach((c) => {
+      if (!rankMap.has(c)) rankMap.set(c, 500 + r++);
+    });
+    return (cat: string) => {
+      if (curCat) {
+        if (cat === curCat) return 0;
+        if (cat.toLowerCase().includes(curCat.toLowerCase())) return 1;
+      }
+      return rankMap.get(cat) ?? 9999;
+    };
+  }
+
+  function renderNameSug(showAll = false) {
+    const box = $('mNameSug');
+    const inp = $('mName');
+    const btn = $('mNameSugBtn');
+    if (!box || !inp) return;
+    closeMatSugs('mNameSug');
+    const q = showAll ? '' : inp.value.trim();
+    const ql = q.toLowerCase();
+    const recent = getRecentCats();
+    const curCat = ($('mCat')?.value || '').trim().replace(/\s+/g, ' ');
+    const rankCat = categoryRankFn();
+    const existingByName = new Map<string, any>();
+    materials.forEach((m) => existingByName.set(String(m.name || '').trim().toLowerCase(), m));
+
+    const fresh = MAT_SUGGESTIONS.filter((s) => !existingByName.has(s.name.toLowerCase())).filter(
+      (s) => !ql || s.name.toLowerCase().includes(ql) || s.cat.toLowerCase().includes(ql) || s.unit.toLowerCase().includes(ql)
+    );
+    const existingMatches = ql
+      ? materials
+          .filter((m) => String(m.name || '').toLowerCase().includes(ql) || String(m.cat || '').toLowerCase().includes(ql))
+          .slice(0, 8)
+      : [];
+
+    fresh.sort((a, b) => rankCat(a.cat) - rankCat(b.cat));
+    const grouped = new Map<string, Array<{ name: string; cat: string; unit: string; existingId?: string }>>();
+    fresh.slice(0, ql ? 40 : 32).forEach((item) => {
+      if (!grouped.has(item.cat)) grouped.set(item.cat, []);
+      grouped.get(item.cat)!.push(item);
+    });
+    existingMatches.forEach((m) => {
+      const cat = m.cat || 'วัสดุอื่น';
+      if (!grouped.has(cat)) grouped.set(cat, []);
+      grouped.get(cat)!.push({ name: m.name, cat, unit: m.unit || '', existingId: m.id });
+    });
+
+    const sortedGroups = [...grouped.entries()].sort((a, b) => rankCat(a[0]) - rankCat(b[0]));
+    const recentHint = curCat ? `กำลังกรอง: ${curCat}` : recent[0] ? `ชนิดล่าสุด: ${recent[0]}` : 'เรียงตามชนิดมาตรฐาน';
+    let bodyHtml = '';
+    if (!sortedGroups.length) {
+      bodyHtml = `<div class="sug-empty">ไม่พบชื่อแนะนำตรงกับ "${esc(q)}" — พิมพ์เพื่อเพิ่มชื่อวัสดุใหม่ได้ทันที</div>`;
+    } else {
+      bodyHtml = sortedGroups
+        .map(([cat, items]) => {
+          const rIdx = recent.indexOf(cat);
+          const tag =
+            curCat && cat === curCat
+              ? 'ชนิดที่เลือก'
+              : rIdx === 0
+              ? 'เลือกล่าสุด'
+              : rIdx > 0 && rIdx <= 3
+              ? `ล่าสุด #${rIdx + 1}`
+              : '';
+          return (
+            `<div class="sug-group"><span>${esc(cat)}</span>${tag ? `<span class="sug-group-tag">${esc(tag)}</span>` : ''}</div>` +
+            items
+              .map((it) =>
+                it.existingId
+                  ? `<button type="button" class="sug-item exists" role="option" data-existing-id="${esc(it.existingId)}"><span class="sug-main">${highlightMatch(
+                      it.name,
+                      q
+                    )}</span><span class="sug-meta">มีในทะเบียน · คลิกแก้ไข</span></button>`
+                  : `<button type="button" class="sug-item" role="option" data-sug-kind="name" data-name="${esc(it.name)}" data-cat="${esc(
+                      it.cat
+                    )}" data-unit="${esc(it.unit)}"><span class="sug-main">${highlightMatch(it.name, q)}</span><span class="sug-meta">${esc(
+                      it.unit
+                    )}</span></button>`
+              )
+              .join('')
+          );
+        })
+        .join('');
+    }
+    box.innerHTML =
+      `<div class="sug-head"><span>เสนอชื่อวัสดุ</span><span class="sug-head-recent">${esc(recentHint)}</span></div>` +
+      `<div class="sug-list">${bodyHtml}</div>`;
+    box.hidden = false;
+    inp.setAttribute('aria-expanded', 'true');
+    if (btn) btn.setAttribute('aria-expanded', 'true');
+    sugActiveIdx = -1;
+  }
+
+  function renderCatSug(showAll = false) {
+    const box = $('mCatSug');
+    const inp = $('mCat');
+    const btn = $('mCatSugBtn');
+    if (!box || !inp) return;
+    closeMatSugs('mCatSug');
+    const q = showAll ? '' : inp.value.trim();
+    const ql = q.toLowerCase();
+    const recent = getRecentCats();
+    const cats = allCats();
+    const ordered = [
+      ...recent.filter((c) => cats.includes(c) || c),
+      ...cats.filter((c) => !recent.includes(c)),
+    ].filter((c, i, a) => c && a.indexOf(c) === i);
+    const filtered = ordered.filter((c) => !ql || c.toLowerCase().includes(ql));
+    const countMap = new Map<string, number>();
+    materials.forEach((m) => {
+      const c = String(m.cat || '').trim();
+      if (c) countMap.set(c, (countMap.get(c) || 0) + 1);
+    });
+
+    const recentHint = recent[0] ? `ล่าสุด: ${recent[0]}` : 'เรียงตามมาตรฐาน';
+    const bodyHtml = filtered.length
+      ? filtered
+          .map((c) => {
+            const rIdx = recent.indexOf(c);
+            const cnt = countMap.get(c) || 0;
+            const meta = rIdx === 0 ? 'เลือกล่าสุด' : rIdx > 0 && rIdx <= 3 ? `ล่าสุด #${rIdx + 1}` : cnt ? `${cnt} รายการ` : '';
+            return `<button type="button" class="sug-item" role="option" data-sug-kind="cat" data-val="${esc(c)}"><span class="sug-main">${highlightMatch(
+              c,
+              q
+            )}</span>${meta ? `<span class="sug-meta">${esc(meta)}</span>` : ''}</button>`;
+          })
+          .join('')
+      : `<div class="sug-empty">ไม่พบประเภทที่ตรงกัน — ใช้ข้อความ "${esc(q)}" เป็นประเภทใหม่ได้</div>`;
+
+    box.innerHTML =
+      `<div class="sug-head"><span>ประเภทวัสดุ</span><span class="sug-head-recent">${esc(recentHint)}</span></div>` +
+      `<div class="sug-list">${bodyHtml}</div>`;
+    box.hidden = false;
+    inp.setAttribute('aria-expanded', 'true');
+    if (btn) btn.setAttribute('aria-expanded', 'true');
+    sugActiveIdx = -1;
+  }
+
+  function renderUnitSug(showAll = false) {
+    const box = $('mUnitSug');
+    const inp = $('mUnit');
+    const btn = $('mUnitSugBtn');
+    if (!box || !inp) return;
+    closeMatSugs('mUnitSug');
+    const q = showAll ? '' : inp.value.trim();
+    const ql = q.toLowerCase();
+    const recentU = getRecentUnits();
+    const recentC = getRecentCats();
+    const curCat = ($('mCat')?.value || '').trim().replace(/\s+/g, ' ') || recentC[0] || '';
+    const catUnits = curCat ? [...new Set(MAT_SUGGESTIONS.filter((s) => s.cat === curCat).map((s) => s.unit))] : [];
+    const customUnits = materials.map((m) => String(m.unit || '').trim()).filter(Boolean);
+    const ordered = [...new Set([...recentU, ...catUnits, ...COMMON_UNITS, ...customUnits])].filter(
+      (u) => !ql || u.toLowerCase().includes(ql)
+    );
+
+    const hint = curCat ? `ชนิด: ${curCat}` : recentU[0] ? `ล่าสุด: ${recentU[0]}` : '';
+    const bodyHtml = ordered.length
+      ? ordered
+          .map((u) => {
+            const meta = recentU[0] === u ? 'ใช้ล่าสุด' : catUnits.includes(u) && curCat ? `แนะนำใน${curCat}` : '';
+            return `<button type="button" class="sug-item" role="option" data-sug-kind="unit" data-val="${esc(u)}"><span class="sug-main">${highlightMatch(
+              u,
+              q
+            )}</span>${meta ? `<span class="sug-meta">${esc(meta)}</span>` : ''}</button>`;
+          })
+          .join('')
+      : `<div class="sug-empty">ไม่พบหน่วยนับ — ใช้ "${esc(q)}" เป็นหน่วยใหม่ได้</div>`;
+
+    box.innerHTML =
+      `<div class="sug-head"><span>หน่วยที่นับ</span>${hint ? `<span class="sug-head-recent">${esc(hint)}</span>` : ''}</div>` +
+      `<div class="sug-list">${bodyHtml}</div>`;
+    box.hidden = false;
+    inp.setAttribute('aria-expanded', 'true');
+    if (btn) btn.setAttribute('aria-expanded', 'true');
+    sugActiveIdx = -1;
+  }
+
+  function applySugSelection(btnEl: HTMLElement) {
+    if (btnEl.dataset.existingId) {
+      const m = matById(btnEl.dataset.existingId);
+      closeMatSugs();
+      if (m) resetMat(m);
+      return;
+    }
+    const kind = btnEl.dataset.sugKind;
+    if (kind === 'name') {
+      const name = btnEl.dataset.name || '';
+      const cat = btnEl.dataset.cat || '';
+      const unit = btnEl.dataset.unit || '';
+      if ($('mName')) $('mName').value = name;
+      if (cat && $('mCat')) {
+        $('mCat').value = cat;
+        touchRecentCat(cat);
+      }
+      if (unit && $('mUnit') && (!$('mUnit').value.trim() || unitAutoFilled)) {
+        $('mUnit').value = unit;
+        unitAutoFilled = true;
+        touchRecentUnit(unit);
+      }
+      closeMatSugs();
+    } else if (kind === 'cat') {
+      const val = btnEl.dataset.val || '';
+      if ($('mCat')) $('mCat').value = val;
+      touchRecentCat(val);
+      closeMatSugs();
+    } else if (kind === 'unit') {
+      const val = btnEl.dataset.val || '';
+      if ($('mUnit')) $('mUnit').value = val;
+      unitAutoFilled = false;
+      touchRecentUnit(val);
+      closeMatSugs();
+    }
+  }
+
+  function wireMatSugField(
+    inputId: string,
+    boxId: string,
+    btnId: string,
+    renderFn: (showAll?: boolean) => void
+  ) {
+    const inp = $(inputId);
+    const box = $(boxId);
+    const btn = $(btnId);
+    if (!inp || !box) return;
+
+    inp.addEventListener('focus', () => renderFn(false));
+    inp.addEventListener('click', () => {
+      if (box.hidden) renderFn(false);
+    });
+    inp.addEventListener('input', () => {
+      if (inputId === 'mUnit') unitAutoFilled = false;
+      renderFn(false);
+    });
+    inp.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (!box.hidden) {
+          e.preventDefault();
+          closeMatSugs();
+        }
+        return;
+      }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        if (box.hidden) {
+          renderFn(false);
+        }
+        const items = [...box.querySelectorAll('.sug-item')] as HTMLElement[];
+        if (!items.length) return;
+        e.preventDefault();
+        if (e.key === 'ArrowDown') sugActiveIdx = (sugActiveIdx + 1) % items.length;
+        else sugActiveIdx = (sugActiveIdx - 1 + items.length) % items.length;
+        items.forEach((el, idx) => el.classList.toggle('active', idx === sugActiveIdx));
+        items[sugActiveIdx]?.scrollIntoView({ block: 'nearest' });
+        return;
+      }
+      if (e.key === 'Enter' && !box.hidden) {
+        const items = [...box.querySelectorAll('.sug-item')] as HTMLElement[];
+        const active = items[sugActiveIdx];
+        if (active) {
+          e.preventDefault();
+          applySugSelection(active);
+        }
+      }
+    });
+    if (btn) {
+      btn.addEventListener('mousedown', (e: MouseEvent) => e.preventDefault());
+      btn.addEventListener('click', () => {
+        if (box.hidden) {
+          inp.focus();
+          renderFn(true);
+        } else {
+          closeMatSugs();
+        }
+      });
+    }
+    box.addEventListener('mousedown', (e: MouseEvent) => {
+      const target = (e.target as HTMLElement).closest('.sug-item') as HTMLElement | null;
+      if (target) {
+        e.preventDefault();
+        applySugSelection(target);
+      }
+    });
+  }
+
+  wireMatSugField('mName', 'mNameSug', 'mNameSugBtn', renderNameSug);
+  wireMatSugField('mCat', 'mCatSug', 'mCatSugBtn', renderCatSug);
+  wireMatSugField('mUnit', 'mUnitSug', 'mUnitSugBtn', renderUnitSug);
+
+  document.addEventListener('mousedown', (e: MouseEvent) => {
+    const t = e.target as HTMLElement | null;
+    if (t && !t.closest('.sug-wrap')) closeMatSugs();
+  });
+
   function resetMat(m: any) {
     editMat = m ? m.id : null;
+    unitAutoFilled = false;
+    closeMatSugs();
     msg('mMsg', '');
     $('matTitle').textContent = m ? 'แก้ไขวัสดุ ' + m.name : 'เพิ่มวัสดุเข้าทะเบียน';
     $('mDel').hidden = !m;
@@ -1838,6 +2423,8 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     try {
       const id = editMat || db.collection('materials').doc().id;
       await db.doc('materials/' + id).set(body);
+      touchRecentCat(body.cat);
+      touchRecentUnit(body.unit);
       toast('บันทึกวัสดุ ' + name + ' แล้ว');
       resetMat(null);
     } catch (err) {
@@ -2705,8 +3292,6 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     saveFile('ตรวจนับวัสดุ_ปีงบ' + cDraft.fy + '.xlsx', XLSX.write(wb, { type: 'array', bookType: 'xlsx' }), 'ส่งออกไฟล์ Excel แล้ว');
   });
 
-  let vsParts: any[] = [],
-    vsHeadLoaded = false;
   const colName = (i: number) => {
     let s = '';
     i++;
@@ -2717,30 +3302,54 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     }
     return s;
   };
-  const thNum = (v: any) => String(v ?? '').replace(/[๐-๙]/g, (d) => String('๐๑๒๓๔๕๖๗๘๙'.indexOf(d)));
   function orgParts() {
-    const o = String(settings.org || ''),
-      m = o.match(/^(.*?)\s*(?:อำเภอ|อ\.)\s*(\S+)\s*(?:จังหวัด|จ\.)\s*(\S+)/);
+    const raw = String(settings.org || '').trim();
+    const o = raw === DEF_SET.org ? '' : raw;
+    const m = o.match(/^(.*?)\s*(?:อำเภอ|อ\.)\s*(\S+)\s*(?:จังหวัด|จ\.)\s*(\S+)/);
     return m ? { name: m[1].trim(), amp: m[2], chw: m[3] } : { name: o, amp: '', chw: '' };
+  }
+  function defaultDivHeadPos(divStr?: string) {
+    const div = String(divStr ?? settings.div ?? '').trim();
+    if (!div) return 'ผู้อำนวยการกอง';
+    if (div === 'สำนักปลัด' || div.startsWith('สำนักปลัด')) return 'หัวหน้า' + div;
+    if (/^(ผู้อำนวยการ|หัวหน้า)/.test(div)) return div;
+    return 'ผู้อำนวยการ' + div;
+  }
+  function defaultControllerPos(divStr?: string) {
+    const div = String(divStr ?? settings.div ?? '').trim();
+    return div ? 'ผู้ควบคุมวัสดุ ' + div : 'ผู้ควบคุมวัสดุ กอง/สำนัก';
+  }
+  function defaultFinPos() {
+    return defaultDivHeadPos();
   }
   function vsDefaults() {
     const op = orgParts(),
       n = op.name;
-    const pal = 'ปลัด' + n;
-    const exe = /^เทศบาล/.test(n) ? 'นายกเทศมนตรี' + n.replace(/^เทศบาล/, '') : 'นายก' + n;
+    const pal = n ? 'ปลัด' + n : 'ปลัดองค์กรปกครองส่วนท้องถิ่น';
+    const exe = n
+      ? /^เทศบาล/.test(n)
+        ? 'นายกเทศมนตรี' + n.replace(/^เทศบาล/, '')
+        : 'นายก' + n
+      : 'ผู้บริหารองค์กรปกครองส่วนท้องถิ่น';
+    const defStaff = settings.staff || settings.payer || '';
+    const defStaffPos = settings.staff
+      ? settings.staffPos || settings.payerPos || ''
+      : settings.payerPos || settings.staffPos || '';
+    const defFin = settings.appr || settings.head || '';
+    const defFinPos = settings.apprPos || settings.headPos || defaultFinPos();
     return {
       org: n,
       amp: op.amp,
       chw: op.chw,
       zip: '',
-      co: '',
-      coPos: '',
+      co: defStaff,
+      coPos: defStaffPos,
       tel: '',
       fax: '',
-      mk: '',
-      mkPos: '',
-      fin: '',
-      finPos: 'ผู้อำนวยการกองคลัง',
+      mk: defStaff,
+      mkPos: defStaffPos,
+      fin: defFin,
+      finPos: defFinPos,
       pal: '',
       palPos: pal,
       exe: '',
@@ -2748,53 +3357,38 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     };
   }
   function vsHead() {
+    const def = vsDefaults();
+    const vsLegacy = settings.vs || {};
+    const pick = (k: string, primaryVal?: string) => {
+      const v = String(primaryVal ?? vsLegacy[k] ?? '').trim();
+      return v || (def as any)[k] || '';
+    };
+    const legacyFinPos =
+      vsLegacy.finPos === 'ผู้อำนวยการกองคลัง' && String(settings.div || '').trim() !== 'กองคลัง'
+        ? ''
+        : vsLegacy.finPos;
     return {
-      ...vsDefaults(),
-      ...Object.fromEntries(Object.entries(settings.vs || {}).filter(([, v]) => v !== '' && v != null)),
+      org: pick('org', orgParts().name),
+      amp: pick('amp', settings.amp),
+      chw: pick('chw', settings.chw),
+      zip: pick('zip', settings.zip),
+      co: pick('co', settings.co),
+      coPos: pick('coPos', settings.coPos),
+      tel: pick('tel', settings.tel),
+      fax: pick('fax', settings.fax),
+      mk: pick('mk', settings.vsMk),
+      mkPos: pick('mkPos', settings.vsMkPos),
+      fin: pick('fin', settings.vsFin),
+      finPos: String(settings.vsFinPos ?? legacyFinPos ?? '').trim() || def.finPos,
+      pal: pick('pal', settings.vsPal),
+      palPos: pick('palPos', settings.vsPalPos),
+      exe: pick('exe', settings.vsExe),
+      exePos: pick('exePos', settings.vsExePos),
     };
   }
-  const VSF: Record<string, string> = {
-    org: 'vOrg',
-    amp: 'vAmp',
-    chw: 'vChw',
-    zip: 'vZip',
-    co: 'vCo',
-    coPos: 'vCoPos',
-    tel: 'vTel',
-    fax: 'vFax',
-    mk: 'vMk',
-    mkPos: 'vMkPos',
-    fin: 'vFin',
-    finPos: 'vFinPos',
-    pal: 'vPal',
-    palPos: 'vPalPos',
-    exe: 'vExe',
-    exePos: 'vExePos',
-  };
-  function fillVsHead() {
-    const h: any = vsHead();
-    Object.entries(VSF).forEach(([k, id]) => ($(id).value = h[k] || ''));
-    vsHeadLoaded = true;
-  }
-  function readVsHead() {
-    const h: Record<string, string> = {};
-    Object.entries(VSF).forEach(([k, id]) => (h[k] = $(id).value.trim()));
-    return h;
-  }
-  $('vHeadSave')?.addEventListener('click', async () => {
-    if (!db) return;
-    const vs = readVsHead();
-    try {
-      await db.doc('settings/main').set({ ...settings, vs });
-      msg('vHeadMsg', 'บันทึกแล้ว');
-      toast('บันทึกข้อมูลหัวรายงานแล้ว');
-    } catch (err) {
-      msg('vHeadMsg', errText(err), 1);
-    }
-  });
   const divName = () => settings.div || 'กองนี้';
   function vsDate() {
-    return $('vDate').value || fyEnd(+$('rFy').value || CUR_FY);
+    return $('vDate')?.value || fyEnd(+$('rFy')?.value || CUR_FY);
   }
   function vsSelfItems() {
     const d = vsDate();
@@ -2816,237 +3410,185 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       });
   }
   const sumAmt = (it: any[]) => r2(it.reduce((t, x) => t + (+x.amt || 0), 0));
-  function vsAllItems() {
-    const parts: any[] = [];
-    if ($('vSelf').checked) parts.push({ div: divName(), items: vsSelfItems() });
-    vsParts.forEach((p) => parts.push(p));
-    let rows: any[] = [];
-    parts.forEach((p) =>
-      p.items.forEach((it: any) => rows.push({ ...it, note: [p.div, it.note].filter(Boolean).join(' · ') }))
-    );
-    if ($('vMerge').checked) {
-      const g = new Map<string, any>();
-      rows.forEach((r) => {
-        const k =
-          r.name.replace(/\s+/g, ' ').trim().toLowerCase() +
-          '|' +
-          String(r.unit || '').trim() +
-          '|' +
-          r2(r.price);
-        const o = g.get(k);
-        if (o) {
-          o.qty = r2(o.qty + r.qty);
-          o.amt = r2(o.amt + r.amt);
-          o.divs.add(r.note.split(' · ')[0]);
-        } else g.set(k, { ...r, divs: new Set([r.note.split(' · ')[0]]) });
-      });
-      rows = [...g.values()].map((o) => ({
-        name: o.name,
-        qty: o.qty,
-        unit: o.unit,
-        price: o.qty ? o.amt / o.qty : 0,
-        amt: o.amt,
-        note: [...o.divs].join(', '),
-      }));
-    }
-    return { parts, rows };
-  }
   function renderVs() {
-    if (!vsHeadLoaded) fillVsHead();
     const fy = +$('rFy').value || CUR_FY;
-    if (!$('vDate').value || $('vDate').dataset.fy !== String(fy)) {
+    if ($('vDate') && (!$('vDate').value || $('vDate').dataset.fy !== String(fy))) {
       $('vDate').value = fyEnd(fy);
       $('vDate').dataset.fy = String(fy);
     }
     const h: any = vsHead();
-    $('vHeadSum').textContent = '· ' + [h.org, h.amp && 'อ.' + h.amp, h.chw && 'จ.' + h.chw].filter(Boolean).join(' ');
-    $('vDivName').textContent = divName();
-    $('vDivName2').textContent = divName();
+    const div = divName();
+    if ($('vHeadSum')) {
+      $('vHeadSum').textContent =
+        '· ' + ([h.org, h.amp && 'อ.' + h.amp, h.chw && 'จ.' + h.chw].filter(Boolean).join(' ') || 'ยังไม่ได้ตั้งค่าชื่อหน่วยงาน');
+    }
+    if ($('vDivName')) $('vDivName').textContent = div;
     const own = vsSelfItems();
-    $('vSelfSum').textContent = `วัสดุคงเหลือ ${own.length} รายการ · ${fmtB(sumAmt(own))} บาท`;
-    const rows: string[] = [];
-    if ($('vSelf').checked)
-      rows.push(
-        `<tr><td><b>${esc(divName())}</b></td><td class="vsrc">ข้อมูลในเครื่องนี้</td><td class="num">${
-          own.length
-        }</td><td class="num">${fmtB(sumAmt(own))}</td><td></td></tr>`
-      );
-    vsParts.forEach((p, i) =>
-      rows.push(
-        `<tr><td><input data-vdiv="${i}" value="${esc(
-          p.div
-        )}" style="min-width:170px"></td><td class="vsrc">${esc(p.file)}</td><td class="num">${
-          p.items.length
-        }</td><td class="num">${fmtB(sumAmt(p.items))}</td><td><button class="btn small" data-vdel="${i}">เอาออก</button></td></tr>`
-      )
-    );
-    $('vParts').innerHTML =
-      rows.join('') ||
-      '<tr><td colspan="5" class="sub">ยังไม่มีข้อมูล ติ๊กรวมข้อมูลในเครื่องนี้ หรือแนบไฟล์ของแต่ละกอง</td></tr>';
-    if ($('vSelf').checked && vsParts.some((p) => p.div.trim() === divName()))
-      msg(
-        'vMsg',
-        '⚠️ มีไฟล์ของ ' + divName() + ' และติ๊กรวมข้อมูลในเครื่องนี้ด้วย ข้อมูลจะซ้ำ 2 เท่า ให้เอาออกอย่างใดอย่างหนึ่ง',
-        1
-      );
-    const A = vsAllItems();
-    $('vPartsFt').innerHTML = `<tr><td colspan="2">รวมทั้งหน่วยงาน (${
-      A.parts.length
-    } ส่วนราชการ)</td><td class="num">${A.rows.length}</td><td class="num">${fmtB(sumAmt(A.rows))}</td><td></td></tr>`;
+    if ($('vSelfSum')) {
+      $('vSelfSum').textContent = `วัสดุคงเหลือประจำ${div} ${own.length} รายการ · มูลค่ารวม ${fmtB(sumAmt(own))} บาท`;
+    }
+    const missEl = $('vMissingSet');
+    if (missEl) {
+      const missing: string[] = [];
+      if (!h.org) missing.push('ชื่อหน่วยงาน (อปท.)');
+      if (!h.amp || !h.chw || !h.zip) missing.push('อำเภอ/จังหวัด/รหัสไปรษณีย์');
+      if (!h.co) missing.push('เจ้าหน้าที่ประสานงาน');
+      if (!h.fin || !h.pal || !h.exe) missing.push('รายชื่อผู้ลงนาม (ผอ.ประจำกอง/ปลัด/ผู้บริหาร)');
+      if (missing.length) {
+        missEl.hidden = false;
+        missEl.innerHTML = `ℹ️ ข้อมูลสำหรับแบบ อปท.-วส. ยังกรอกไม่ครบ (${esc(missing.join(', '))}) — คลิกปุ่ม <b>“แก้ไขข้อมูลหน่วยงาน / ผู้ลงนาม”</b> ด้านบนเพื่อตั้งค่าเพิ่มเติม`;
+      } else {
+        missEl.hidden = true;
+      }
+    }
+    if ($('vsPreview')) {
+      $('vsPreview').innerHTML = vsHtml(own, 'ส่วนราชการ ' + div);
+    }
   }
   $('vDate')?.addEventListener('change', renderVs);
-  $('vSelf')?.addEventListener('change', renderVs);
-  $('vMerge')?.addEventListener('change', renderVs);
-  $('vParts')?.addEventListener('input', (e: Event) => {
-    const target = e.target as HTMLInputElement;
-    const i = target.dataset.vdiv;
-    if (i != null) vsParts[+i].div = target.value;
-  });
-  $('vParts')?.addEventListener('change', (e: Event) => {
-    const target = e.target as HTMLInputElement;
-    if (target.dataset.vdiv != null) renderVs();
-  });
-  $('vParts')?.addEventListener('click', (e: Event) => {
-    const b = (e.target as HTMLElement).closest('[data-vdel]') as HTMLElement | null;
-    if (b) {
-      vsParts.splice(+b.dataset.vdel!, 1);
-      renderVs();
-    }
-  });
-  function parseVsRows(rows: any[][], fname: string) {
-    const T = (c: any) =>
-      String(c ?? '')
-        .replace(/\s+/g, ' ')
-        .trim();
-    const h = rows.findIndex((r) => r.some((c) => /รายการ/.test(T(c))) && r.some((c) => /ปริมาณ|จำนวน/.test(T(c))));
-    if (h < 0) throw new Error('ไม่พบหัวตาราง “รายการ / ปริมาณ”');
-    const map: Record<string, number> = {};
-    rows[h].forEach((c, i) => {
-      const t = T(c);
-      if (map.name == null && /รายการ/.test(t)) map.name = i;
-      else if (map.qty == null && /ปริมาณ|^จำนวน$|จำนวนคงเหลือ/.test(t)) map.qty = i;
-      else if (map.unit == null && /หน่วยนับ|^หน่วย$/.test(t)) map.unit = i;
-      else if (map.price == null && /ราคา/.test(t)) map.price = i;
-      else if (map.amt == null && /จำนวนเงิน|มูลค่า/.test(t)) map.amt = i;
-      else if (map.note == null && /หมายเหตุ/.test(t)) map.note = i;
-    });
-    if (map.name == null || map.qty == null) throw new Error('ไม่พบคอลัมน์ รายการ / ปริมาณ');
-    let div = '';
-    for (const r of rows.slice(0, h))
-      for (const c of r) {
-        const m = T(c).match(/^ส่วนราชการ\s*[:：]?\s*(.+)$/);
-        if (m && !/^\.+$/.test(m[1])) {
-          div = m[1].replace(/\.+$/, '').trim();
-          break;
-        }
-      }
-    const items: any[] = [];
-    for (const r of rows.slice(h + 1)) {
-      const g = (k: string) => (map[k] == null ? '' : r[map[k]]);
-      const name = T(g('name'));
-      const line = r.map(T).join(' ');
-      if (/รวมทั้งสิ้น|^รวม$/.test(name) || /ลงชื่อ/.test(line)) break;
-      if (!name || /^\(บาท\)$/.test(name)) continue;
-      const qty = numOf(thNum(g('qty'))),
-        price = numOf(thNum(g('price')));
-      let amt = numOf(thNum(g('amt')));
-      if (!amt && qty && price) amt = r2(qty * price);
-      if (!qty && !amt) continue;
-      items.push({
-        name,
-        qty: r2(qty),
-        unit: T(g('unit')),
-        price: price || (qty ? amt / qty : 0),
-        amt: r2(amt),
-        note: T(g('note')),
-      });
-    }
-    if (!items.length) throw new Error('ไม่มีรายการวัสดุในไฟล์');
-    return { div: div || fname.replace(/\.[^.]+$/, ''), file: fname, items };
-  }
-  $('vFiles')?.addEventListener('change', async () => {
-    const fs = [...$('vFiles').files];
-    $('vFiles').value = '';
-    const bad: string[] = [];
-    let ok = 0;
-    for (const f of fs) {
-      try {
-        if (!/\.xlsx$/i.test(f.name)) throw new Error('ใช้ได้เฉพาะ .xlsx');
-        const p = parseVsRows(await readXlsxRows(await f.arrayBuffer()), f.name);
-        const k = vsParts.findIndex((x) => x.file === f.name);
-        if (k >= 0) vsParts[k] = p;
-        else vsParts.push(p);
-        ok++;
-      } catch (err: any) {
-        bad.push(f.name + ': ' + (err?.message || err));
-      }
-    }
-    msg('vMsg', (ok ? `แนบแล้ว ${ok} ไฟล์` : '') + (bad.length ? (ok ? ' · ' : '') + 'อ่านไม่ได้ ' + bad.join(' / ') : ''), !!bad.length);
-    renderVs();
-  });
   function vsTitleLines(h: any, date: string, sub: string) {
     return {
       form: 'แบบ อปท. - วส.',
       title: 'รายงานวัสดุคงเหลือ',
       date: 'ณ วันที่ ' + thDateFull(date),
       sub,
-      l1: 'ชื่อหน่วยงาน ' + (h.org || '....................'),
+      l1: 'ชื่อหน่วยงาน ' + (h.org || '................................................................................'),
       l2:
         'อำเภอ ' +
-        (h.amp || '..............') +
-        '      จังหวัด ' +
-        (h.chw || '..............') +
-        '      รหัสไปรษณีย์ ' +
-        (h.zip || '..........'),
+        (h.amp || '..............................') +
+        '   จังหวัด ' +
+        (h.chw || '..............................') +
+        '   รหัสไปรษณีย์ ' +
+        (h.zip || '...............'),
       l3:
         'ชื่อเจ้าหน้าที่ประสานงาน ' +
-        (h.co || '..............................') +
-        '      ตำแหน่ง ' +
-        (h.coPos || '....................'),
-      l4: 'โทรศัพท์ ' + (h.tel || '....................') + '      โทรสาร ' + (h.fax || '....................'),
+        (h.co || '..................................................') +
+        '   ตำแหน่ง ' +
+        (h.coPos || '........................................'),
+      l4:
+        'โทรศัพท์ ' +
+        (h.tel || '........................................') +
+        '   โทรสาร ' +
+        (h.fax || '........................................'),
     };
   }
   function vsSigs(h: any) {
     const D = '..................................................';
+    const DP = '........................................';
     return [
-      ['ลงชื่อ' + D + 'ผู้จัดทำ', '(' + (h.mk || D) + ')', 'ตำแหน่ง ' + (h.mkPos || '..............................'), 'วันที่ ..............................'],
-      ['ลงชื่อ' + D, '(' + (h.fin || D) + ')', 'ตำแหน่ง ' + (h.finPos || '..............................'), 'วันที่ ..............................'],
-      ['ลงชื่อ' + D, '(' + (h.pal || D) + ')', 'ตำแหน่ง ' + (h.palPos || '..............................'), 'วันที่ ..............................'],
-      ['ลงชื่อ' + D, '(' + (h.exe || D) + ')', 'ตำแหน่ง ' + (h.exePos || '..............................'), 'วันที่ ..............................'],
+      [
+        'ลงชื่อ ' + D + ' ผู้จัดทำ',
+        '(' + (h.mk || D) + ')',
+        'ตำแหน่ง ' + (h.mkPos || DP),
+        'วันที่ ........................................',
+      ],
+      [
+        'ลงชื่อ ' + D,
+        '(' + (h.fin || D) + ')',
+        'ตำแหน่ง ' + (h.finPos || defaultFinPos()),
+        'วันที่ ........................................',
+      ],
+      [
+        'ลงชื่อ ' + D,
+        '(' + (h.pal || D) + ')',
+        'ตำแหน่ง ' + (h.palPos || 'ปลัดองค์กรปกครองส่วนท้องถิ่น'),
+        'วันที่ ........................................',
+      ],
+      [
+        'ลงชื่อ ' + D,
+        '(' + (h.exe || D) + ')',
+        'ตำแหน่ง ' + (h.exePos || 'ผู้บริหารองค์กรปกครองส่วนท้องถิ่น'),
+        'วันที่ ........................................',
+      ],
     ];
   }
   function vsHtml(rows: any[], sub: string) {
-    const h = { ...vsHead(), ...(vsHeadLoaded ? readVsHead() : {}) },
+    const h = vsHead(),
       L = vsTitleLines(h, vsDate(), sub),
       tot = sumAmt(rows);
-    return `<div class="vsform"><p class="fm">${L.form}</p><p class="ttl">${L.title}</p><p class="c">${esc(
-      L.date
-    )}</p>${sub ? `<p class="c">${esc(sub)}</p>` : ''}
-  <div class="hd" style="margin-top:10px"><p>${esc(L.l1)}</p><p>${esc(L.l2)}</p><p>${esc(L.l3)}</p><p>${esc(
-      L.l4
-    )}</p></div>
-  <table><thead><tr><th style="width:46px">ลำดับ</th><th>รายการ</th><th style="width:76px">ปริมาณ</th><th style="width:72px">หน่วยนับ</th><th style="width:92px">ราคาต่อหน่วย<br>(บาท)</th><th style="width:104px">จำนวนเงิน<br>(บาท)</th><th style="width:128px">หมายเหตุ</th></tr></thead>
-  <tbody>${
-    rows
-      .map(
-        (r, i) =>
-          `<tr><td class="cn">${i + 1}</td><td>${esc(r.name)}</td><td class="n">${fmtQ(
-            r.qty
-          )}</td><td class="cn">${esc(r.unit)}</td><td class="n">${fmtB(r.price)}</td><td class="n">${fmtB(
-            r.amt
-          )}</td><td>${esc(r.note)}</td></tr>`
-      )
-      .join('') || '<tr><td colspan="7" class="cn">ไม่มีวัสดุคงเหลือ</td></tr>'
-  }</tbody>
-  <tfoot><tr><td></td><td class="cn"><b>รวมทั้งสิ้น</b></td><td colspan="3"></td><td class="n"><b>${fmtB(
-    tot
-  )}</b></td><td></td></tr></tfoot></table>
-  <div class="vsig">${vsSigs(h)
-    .map((s) => `<div>${s.map(esc).join('<br>')}</div>`)
-    .join('')}</div></div>`;
+    const minRows = 8;
+    const padCount = Math.max(0, minRows - (rows.length || 1));
+    const dataRowsHtml = rows.length
+      ? rows
+          .map(
+            (r, i) =>
+              `<tr><td class="cn">${i + 1}</td><td>${esc(r.name)}</td><td class="n">${fmtQ(
+                r.qty
+              )}</td><td class="cn">${esc(r.unit)}</td><td class="n">${fmtB(r.price)}</td><td class="n">${fmtB(
+                r.amt
+              )}</td><td>${esc(r.note)}</td></tr>`
+          )
+          .join('')
+      : '<tr><td class="cn"></td><td class="cn">ไม่มีวัสดุคงเหลือ</td><td></td><td></td><td></td><td class="n">-</td><td></td></tr>';
+    const blankRowsHtml = Array.from({ length: padCount })
+      .map(() => '<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td class="n"></td><td></td></tr>')
+      .join('');
+    return `<div class="vsform">
+      <p class="fm">${L.form}</p>
+      <p class="ttl">${L.title}</p>
+      <p class="c" style="margin-top:2px">${esc(L.date)}</p>
+      ${sub ? `<p class="c" style="font-weight:600;margin-top:2px">${esc(sub)}</p>` : ''}
+      <div class="vs-hd-lines">
+        <div class="vs-hd-row">
+          <span class="vs-hd-lbl">ชื่อหน่วยงาน</span>
+          <span class="vs-hd-val">${esc(h.org || '')}</span>
+        </div>
+        <div class="vs-hd-row">
+          <span class="vs-hd-lbl">อำเภอ</span>
+          <span class="vs-hd-val">${esc(h.amp || '')}</span>
+          <span class="vs-hd-lbl">จังหวัด</span>
+          <span class="vs-hd-val">${esc(h.chw || '')}</span>
+          <span class="vs-hd-lbl">รหัสไปรษณีย์</span>
+          <span class="vs-hd-val" style="flex:0.55">${esc(h.zip || '')}</span>
+        </div>
+        <div class="vs-hd-row">
+          <span class="vs-hd-lbl">ชื่อเจ้าหน้าที่ประสานงาน</span>
+          <span class="vs-hd-val" style="flex:1.35">${esc(h.co || '')}</span>
+          <span class="vs-hd-lbl">ตำแหน่ง</span>
+          <span class="vs-hd-val">${esc(h.coPos || '')}</span>
+        </div>
+        <div class="vs-hd-row">
+          <span class="vs-hd-lbl">โทรศัพท์</span>
+          <span class="vs-hd-val">${esc(h.tel || '')}</span>
+          <span class="vs-hd-lbl">โทรสาร</span>
+          <span class="vs-hd-val">${esc(h.fax || '')}</span>
+        </div>
+      </div>
+      <table class="vs-table">
+        <thead>
+          <tr>
+            <th rowSpan="2" style="width:48px">ลำดับ</th>
+            <th rowSpan="2">รายการ</th>
+            <th rowSpan="2" style="width:74px">ปริมาณ</th>
+            <th rowSpan="2" style="width:72px">หน่วยนับ</th>
+            <th style="width:98px">ราคาต่อหน่วย</th>
+            <th style="width:108px">จำนวนเงิน</th>
+            <th rowSpan="2" style="width:120px">หมายเหตุ</th>
+          </tr>
+          <tr>
+            <th>(บาท)</th>
+            <th>(บาท)</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${dataRowsHtml}
+          ${blankRowsHtml}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colSpan="5" style="text-align:right;padding-right:14px"><b>รวมทั้งสิ้น</b></td>
+            <td class="n"><b>${rows.length ? fmtB(tot) : '-'}</b></td>
+            <td class="vs-shade"></td>
+          </tr>
+        </tfoot>
+      </table>
+      <div class="vsig">${vsSigs(h)
+        .map((s) => `<div>${s.map(esc).join('<br>')}</div>`)
+        .join('')}</div>
+    </div>`;
   }
   function vsSheet(rows: any[], sub: string) {
-    const h = { ...vsHead(), ...readVsHead() },
+    const h = vsHead(),
       L = vsTitleLines(h, vsDate(), sub);
     const aoa: any[][] = [],
       mg: string[] = [];
@@ -3081,15 +3623,17 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       ]);
     });
     const last = aoa.length;
+    const totRowIdx = aoa.length;
     aoa.push([
-      { v: '', s: 'tdb' },
       { v: 'รวมทั้งสิ้น', s: 'totl' },
+      { v: '', s: 'tdb' },
       { v: '', s: 'tdb' },
       { v: '', s: 'tdb' },
       { v: '', s: 'tdb' },
       rows.length ? { f: `SUM(F${first}:F${last})`, v: sumAmt(rows), s: 'tot' } : { v: 0, s: 'tot' },
       { v: '', s: 'tdb' },
     ]);
+    M(totRowIdx, 0, 4);
     aoa.push([]);
     aoa.push([]);
     const sg = vsSigs(h);
@@ -3112,37 +3656,13 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     ws['!titles'] = `$${h1 + 1}:$${h1 + 2}`;
     return ws;
   }
-  function vsSave(fname: string, rows: any[], sub: string, parts?: any[]) {
+  function vsSave(fname: string, rows: any[], sub: string) {
     if (typeof XLSX === 'undefined') {
       toast('โหลดตัวสร้างไฟล์ Excel ไม่สำเร็จ');
       return;
     }
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, vsSheet(rows, sub), 'แบบ อปท. วส.');
-    if (parts) {
-      const a: any[][] = [
-        [{ v: 'สรุปวัสดุคงเหลือแยกตามส่วนราชการ ณ วันที่ ' + thDateFull(vsDate()), s: 'bold' }],
-        [],
-        ['ลำดับ', 'ส่วนราชการ', 'จำนวนรายการ', 'จำนวนเงิน (บาท)'].map((v) => ({ v, s: 'th' })),
-      ];
-      parts.forEach((p, i) =>
-        a.push([
-          { v: i + 1, s: 'tdc' },
-          { v: p.div, s: 'td' },
-          { v: p.items.length, s: 'qtyi' },
-          { v: sumAmt(p.items), s: 'num' },
-        ])
-      );
-      a.push([
-        { v: '', s: 'tdb' },
-        { v: 'รวม', s: 'totl' },
-        { v: parts.reduce((t, p) => t + p.items.length, 0), s: 'qtyi' },
-        { v: r2(parts.reduce((t, p) => t + sumAmt(p.items), 0)), s: 'tot' },
-      ]);
-      const ws = XLSX.utils.aoa_to_sheet(a);
-      ws['!cols'] = [{ wch: 8 }, { wch: 40 }, { wch: 16 }, { wch: 20 }];
-      XLSX.utils.book_append_sheet(wb, ws, 'สรุปแยกส่วนราชการ');
-    }
     saveFile(fname, XLSX.write(wb, { type: 'array', bookType: 'xlsx' }), 'ส่งออกไฟล์ Excel แล้ว');
   }
   const vsFy = () => fyOf(vsDate());
@@ -3152,16 +3672,6 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
   $('vSelfPrint')?.addEventListener('click', () =>
     openPaper('แบบ อปท.-วส. ' + divName(), vsHtml(vsSelfItems(), 'ส่วนราชการ ' + divName()), false)
   );
-  $('vAllXlsx')?.addEventListener('click', () => {
-    const A = vsAllItems();
-    if (!A.parts.length) return msg('vMsg', 'ยังไม่มีข้อมูลให้รวม', 1);
-    vsSave(`อปท.วส_รวมทั้งหน่วยงาน_ปีงบ${vsFy()}.xlsx`, A.rows, '', A.parts);
-  });
-  $('vAllPrint')?.addEventListener('click', () => {
-    const A = vsAllItems();
-    if (!A.parts.length) return msg('vMsg', 'ยังไม่มีข้อมูลให้รวม', 1);
-    openPaper('แบบ อปท.-วส. รวมทั้งหน่วยงาน', vsHtml(A.rows, ''), false);
-  });
 
   const GRP: Record<string, string> = { req: 'ผู้เบิก', purpose: 'เพื่อใช้ในงาน', cat: 'ประเภทวัสดุ' };
   function issueGroups(p: any) {
@@ -3215,10 +3725,14 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
   }
 
   function reportSignBlockHtml() {
-    const staffName = settings.staff || settings.payer || '';
-    const staffPos = settings.staff ? settings.staffPos || settings.payerPos || '' : settings.payerPos || '';
-    const headName = settings.head || settings.appr || '';
-    const headPos = settings.head ? settings.headPos || settings.apprPos || '' : settings.apprPos || '';
+    const staffName = settings.staff || settings.vsMk || settings.payer || '';
+    const staffPos = settings.staff
+      ? settings.staffPos || settings.vsMkPos || settings.payerPos || ''
+      : settings.vsMkPos || settings.payerPos || settings.staffPos || '';
+    const headName = settings.appr || settings.vsFin || settings.head || '';
+    const headPos = settings.appr
+      ? settings.apprPos || settings.vsFinPos || settings.headPos || ''
+      : settings.vsFinPos || settings.headPos || settings.apprPos || defaultDivHeadPos();
     return `<div class="rp-sigs">
       <div class="rp-sig-col">
         <div>(ลงชื่อ) .................................................. ผู้จัดทำรายงาน</div>
@@ -3832,7 +4346,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     </div>`;
   }
 
-  function cardPaperHtml(ids: string[], p: any, rowsPerPage = 12) {
+  function cardPaperHtml(ids: string[], p: any, rowsPerPage = 10) {
     const sheets: string[] = [];
     ids.forEach((id) => {
       const m = matById(id);
@@ -3908,7 +4422,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
               .sort(matSort)
               .map((m) => m.id)
           : [mid];
-      box.innerHTML = `<div class="official-ledger-preview">${cardPaperHtml(ids, p, 12)}</div>`;
+      box.innerHTML = `<div class="official-ledger-preview">${cardPaperHtml(ids, p, 10)}</div>`;
     }
   }
   $('btnXlsx')?.addEventListener('click', () => {
@@ -3923,6 +4437,10 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     const p = period(),
       wb = XLSX.utils.book_new();
     let fname: string;
+    if (repKind === 'vs') {
+      vsSave(`อปท.วส_${divName()}_ปีงบ${vsFy()}.xlsx`, vsSelfItems(), 'ส่วนราชการ ' + divName());
+      return;
+    }
     if (repKind === 'req') {
       fname = issueXlsx(p, wb);
       saveFile(fname, XLSX.write(wb, { type: 'array', bookType: 'xlsx' }), 'ส่งออกไฟล์ Excel แล้ว');
@@ -4058,16 +4576,16 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
 
   const POS: Record<string, string[]> = {
     gApprPos: [
-      'นายกองค์การบริหารส่วนตำบล',
-      'รองนายกองค์การบริหารส่วนตำบล',
-      'ปลัดองค์การบริหารส่วนตำบล',
-      'รองปลัดองค์การบริหารส่วนตำบล',
-      'หัวหน้าสำนักปลัด',
       'ผู้อำนวยการกองคลัง',
       'ผู้อำนวยการกองช่าง',
+      'ผู้อำนวยการกองสวัสดิการสังคม',
+      'หัวหน้าสำนักปลัด',
       'ผู้อำนวยการกองการศึกษา ศาสนาและวัฒนธรรม',
       'ผู้อำนวยการกองสาธารณสุขและสิ่งแวดล้อม',
-      'ผู้อำนวยการกองสวัสดิการสังคม',
+      'ปลัดองค์การบริหารส่วนตำบล',
+      'รองปลัดองค์การบริหารส่วนตำบล',
+      'นายกองค์การบริหารส่วนตำบล',
+      'รองนายกองค์การบริหารส่วนตำบล',
       'หัวหน้าเจ้าหน้าที่',
     ],
   };
@@ -4094,19 +4612,47 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
   function posGet(id: string) {
     return $(id).value === OTHER ? $(id + 'X').value.trim() : $(id).value;
   }
+  let lastDivForSync = '';
+  $('gDiv')?.addEventListener('input', () => {
+    const newDiv = $('gDiv').value.trim();
+    const curPos = posGet('gApprPos');
+    const prevDef = defaultDivHeadPos(lastDivForSync);
+    if (!curPos || curPos === prevDef || curPos === 'ผู้อำนวยการกอง') {
+      posSet('gApprPos', defaultDivHeadPos(newDiv));
+    }
+    lastDivForSync = newDiv;
+  });
   function renderSet() {
     const s = settings;
+    const vs = s.vs || {};
+    const op = orgParts();
     $('gDiv').value = s.div || '';
+    lastDivForSync = s.div || '';
     $('gWork').value = s.work || '';
     $('gOrg').value = s.org || '';
-    $('gAppr').value = s.appr || '';
-    posSet('gApprPos', s.apprPos);
-    $('gPayer').value = s.payer || '';
-    $('gPayerPos').value = s.payerPos || '';
-    $('gStaff').value = s.staff || '';
-    $('gStaffPos').value = s.staffPos || '';
-    $('gHead').value = s.head || '';
-    $('gHeadPos').value = s.headPos || '';
+    if ($('gAmp')) $('gAmp').value = s.amp || vs.amp || op.amp || '';
+    if ($('gChw')) $('gChw').value = s.chw || vs.chw || op.chw || '';
+    if ($('gZip')) $('gZip').value = s.zip || vs.zip || '';
+    if ($('gCo')) $('gCo').value = s.co || vs.co || '';
+    if ($('gCoPos')) $('gCoPos').value = s.coPos || vs.coPos || '';
+    if ($('gTel')) $('gTel').value = s.tel || vs.tel || '';
+    if ($('gFax')) $('gFax').value = s.fax || vs.fax || '';
+    $('gAppr').value = s.appr || s.vsFin || vs.fin || s.head || '';
+    posSet('gApprPos', s.apprPos || s.vsFinPos || s.headPos || defaultDivHeadPos(s.div));
+    $('gStaff').value = s.staff || s.payer || s.vsMk || vs.mk || '';
+    $('gStaffPos').value = s.staffPos || s.payerPos || s.vsMkPos || vs.mkPos || '';
+    if ($('gVsMk')) $('gVsMk').value = s.vsMk || vs.mk || '';
+    if ($('gVsMkPos')) $('gVsMkPos').value = s.vsMkPos || vs.mkPos || '';
+    if ($('gVsFin')) $('gVsFin').value = s.vsFin || vs.fin || '';
+    if ($('gVsFinPos')) {
+      const legacyFinPos =
+        vs.finPos === 'ผู้อำนวยการกองคลัง' && String(s.div || '').trim() !== 'กองคลัง' ? '' : vs.finPos;
+      $('gVsFinPos').value = s.vsFinPos || legacyFinPos || '';
+    }
+    if ($('gVsPal')) $('gVsPal').value = s.vsPal || vs.pal || '';
+    if ($('gVsPalPos')) $('gVsPalPos').value = s.vsPalPos || vs.palPos || '';
+    if ($('gVsExe')) $('gVsExe').value = s.vsExe || vs.exe || '';
+    if ($('gVsExePos')) $('gVsExePos').value = s.vsExePos || vs.exePos || '';
     $('gSigs').innerHTML = SIGS.map(
       ([k, l]) => `<label><input type="checkbox" data-gsig="${k}"${sigOn(k) ? ' checked' : ''}> ${l}</label>`
     ).join('');
@@ -4114,25 +4660,80 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
   $('setForm')?.addEventListener('submit', async (e: Event) => {
     e.preventDefault();
     if (!db) return msg('gMsg', 'เบราว์เซอร์นี้บันทึกข้อมูลไม่ได้', 1);
+    const orgVal = $('gOrg').value.trim() || DEF_SET.org;
+    const ampVal = $('gAmp')?.value.trim() || '';
+    const chwVal = $('gChw')?.value.trim() || '';
+    const zipVal = $('gZip')?.value.trim() || '';
+    const coVal = $('gCo')?.value.trim() || '';
+    const coPosVal = $('gCoPos')?.value.trim() || '';
+    const telVal = $('gTel')?.value.trim() || '';
+    const faxVal = $('gFax')?.value.trim() || '';
+    const apprVal = $('gAppr').value.trim();
+    const apprPosVal = posGet('gApprPos');
+    const staffVal = $('gStaff').value.trim();
+    const staffPosVal = $('gStaffPos').value.trim();
+    const vsMkVal = $('gVsMk')?.value.trim() || '';
+    const vsMkPosVal = $('gVsMkPos')?.value.trim() || '';
+    const vsFinVal = $('gVsFin')?.value.trim() || '';
+    const vsFinPosVal = $('gVsFinPos')?.value.trim() || '';
+    const vsPalVal = $('gVsPal')?.value.trim() || '';
+    const vsPalPosVal = $('gVsPalPos')?.value.trim() || '';
+    const vsExeVal = $('gVsExe')?.value.trim() || '';
+    const vsExePosVal = $('gVsExePos')?.value.trim() || '';
     const body = {
       logo: settings.logo || '',
-      theme: settings.theme || '',
+      theme: '',
       div: $('gDiv').value.trim(),
       work: $('gWork').value.trim(),
-      org: $('gOrg').value.trim() || DEF_SET.org,
-      appr: $('gAppr').value.trim(),
-      apprPos: posGet('gApprPos'),
-      payer: $('gPayer').value.trim(),
-      payerPos: $('gPayerPos').value.trim(),
-      staff: $('gStaff').value.trim(),
-      staffPos: $('gStaffPos').value.trim(),
-      head: $('gHead').value.trim(),
-      headPos: $('gHeadPos').value.trim(),
-      vs: settings.vs || null,
+      org: orgVal,
+      amp: ampVal,
+      chw: chwVal,
+      zip: zipVal,
+      co: coVal,
+      coPos: coPosVal,
+      tel: telVal,
+      fax: faxVal,
+      appr: apprVal,
+      apprPos: apprPosVal,
+      payer: staffVal,
+      payerPos: staffPosVal,
+      staff: staffVal,
+      staffPos: staffPosVal,
+      head: apprVal,
+      headPos: apprPosVal,
+      vsMk: vsMkVal,
+      vsMkPos: vsMkPosVal,
+      vsFin: vsFinVal,
+      vsFinPos: vsFinPosVal,
+      vsPal: vsPalVal,
+      vsPalPos: vsPalPosVal,
+      vsExe: vsExeVal,
+      vsExePos: vsExePosVal,
+      vs: {
+        org: orgVal === DEF_SET.org ? '' : orgVal,
+        amp: ampVal,
+        chw: chwVal,
+        zip: zipVal,
+        co: coVal,
+        coPos: coPosVal,
+        tel: telVal,
+        fax: faxVal,
+        mk: vsMkVal,
+        mkPos: vsMkPosVal,
+        fin: vsFinVal,
+        finPos: vsFinPosVal,
+        pal: vsPalVal,
+        palPos: vsPalPosVal,
+        exe: vsExeVal,
+        exePos: vsExePosVal,
+      },
       customFys: Array.isArray(settings.customFys) ? settings.customFys : [],
-      slipSigs: Object.fromEntries(
-        [...document.querySelectorAll('[data-gsig]')].map((x: any) => [x.dataset.gsig, x.checked])
-      ),
+      slipSigs: {
+        ...(settings.slipSigs || {}),
+        ...Object.fromEntries(
+          [...document.querySelectorAll('[data-gsig]')].map((x: any) => [x.dataset.gsig, x.checked])
+        ),
+      },
     };
     try {
       await db.doc('settings/main').set(body);
@@ -4272,27 +4873,6 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       msg('gMsg', 'อ่านรูปนี้ไม่ได้ ลองใช้ไฟล์ PNG หรือ JPG', 1);
     }
   });
-  async function saveTheme(c: string) {
-    if (!db) {
-      msg('gMsg', 'ยังบันทึกไม่ได้', 1);
-      return;
-    }
-    applyTheme(c);
-    try {
-      await db.doc('settings/main').set({ ...settings, theme: c });
-      applySet({ ...settings, theme: c });
-      toast(c ? 'เปลี่ยนสีแล้ว' : 'กลับเป็นสีเริ่มต้นแล้ว');
-    } catch (err) {
-      msg('gMsg', errText(err), 1);
-    }
-  }
-  $('swatches')?.addEventListener('click', (e: Event) => {
-    const b = (e.target as HTMLElement).closest('[data-theme-c]') as HTMLElement | null;
-    if (b) saveTheme(b.dataset.themeC === THEMES[0][0] ? '' : b.dataset.themeC!);
-  });
-  $('themeCustom')?.addEventListener('input', (e: Event) => applyTheme((e.target as HTMLInputElement).value));
-  $('themeCustom')?.addEventListener('change', (e: Event) => saveTheme((e.target as HTMLInputElement).value));
-  $('themeReset')?.addEventListener('click', () => saveTheme(''));
   $('logoDel')?.addEventListener('click', () => {
     if (confirmClick('dellogo', $('logoDel'), 'กดอีกครั้งเพื่อลบโลโก้')) saveLogo('');
   });
