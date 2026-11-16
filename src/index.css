@@ -1618,6 +1618,16 @@ tr.open td {
   color: #064e3b;
 }
 
+.st.upd {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.st.warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
 .st.skip {
   background: var(--warn-soft);
   color: var(--warn);
@@ -1626,6 +1636,12 @@ tr.open td {
 .st.bad {
   background: var(--bad-soft);
   color: var(--bad);
+}
+
+.imp-choice-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .impopt {

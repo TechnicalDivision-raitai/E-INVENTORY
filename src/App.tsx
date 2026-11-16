@@ -1110,7 +1110,9 @@ function KumWatsaduWorkspace({
                 <div className="cardhead">
                   <div>
                     <h3>นำเข้าวัสดุจากไฟล์ Excel (.xlsx / .csv)</h3>
-                    <span className="sub">เพิ่มทะเบียนวัสดุพร้อมยอดยกมาทีละหลายรายการอย่างรวดเร็ว</span>
+                    <span className="sub">
+                      เพิ่มทะเบียนวัสดุใหม่ หรืออัปเดตข้อมูลเพิ่มเติม (เช่น ราคา อย่างสูง/ต่ำ) ทีละหลายรายการ
+                    </span>
                   </div>
                   <div className="imp-actions">
                     <button type="button" className="btn" id="impTpl">
@@ -1871,6 +1873,68 @@ function KumWatsaduWorkspace({
           </div>
           <div className="mv-detail-body" id="mvDetailBody"></div>
           <div className="mv-detail-foot" id="mvDetailFoot"></div>
+        </div>
+      </div>
+
+      {/* Excel Import Quantity Mismatch Confirmation Modal */}
+      <div
+        className="modal"
+        id="impQtyModal"
+        hidden
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="impQtyModalTitle"
+        style={{ alignItems: 'center', justifyContent: 'center' }}
+      >
+        <div className="mv-detail-box" style={{ width: 'min(780px, 100%)' }}>
+          <div className="mv-detail-head">
+            <div>
+              <h3 id="impQtyModalTitle">ยืนยันจำนวนวัสดุที่ไม่ตรงกับข้อมูลในระบบ</h3>
+              <div className="sub" id="impQtyModalSub">
+                พบรายการวัสดุที่มีในระบบแล้วแต่จำนวนในไฟล์ Excel ไม่ตรงกับยอดคงเหลือในระบบ กรุณาเลือกจำนวนที่ต้องการใช้ก่อนอัปเดตข้อมูล
+              </div>
+            </div>
+            <button type="button" className="btn small" id="impQtyClose">
+              ปิดหน้าต่าง
+            </button>
+          </div>
+          <div className="mv-detail-body" style={{ gap: 12 }}>
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--line)] bg-[var(--sunk)] px-3.5 py-2.5">
+              <span className="text-sm font-semibold text-[var(--fg)]">
+                ตั้งค่าจำนวนทั้งหมดพร้อมกัน:
+              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" className="btn small primary" id="impQtyAllExcel">
+                  ใช้จำนวนตาม Excel ทั้งหมด
+                </button>
+                <button type="button" className="btn small" id="impQtyAllSys">
+                  คงจำนวนเดิมในระบบทั้งหมด (อัปเดตเฉพาะราคา/ข้อมูลอื่น)
+                </button>
+              </div>
+            </div>
+            <div className="tablebox impbox" style={{ margin: 0, maxHeight: 340 }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>ชื่อหรือชนิดวัสดุ</th>
+                    <th className="num">ราคา/หน่วย</th>
+                    <th className="num">ในระบบ</th>
+                    <th className="num">ใน Excel</th>
+                    <th>เลือกจำนวนที่จะใช้</th>
+                  </tr>
+                </thead>
+                <tbody id="impQtyRows"></tbody>
+              </table>
+            </div>
+          </div>
+          <div className="mv-detail-foot">
+            <button type="button" className="btn" id="impQtyCancel">
+              ย้อนกลับ
+            </button>
+            <button type="button" className="btn primary" id="impQtyConfirm">
+              ยืนยันจำนวนและอัปเดตข้อมูล
+            </button>
+          </div>
         </div>
       </div>
 

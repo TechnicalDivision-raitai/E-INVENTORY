@@ -666,16 +666,22 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       .slice(0, 6);
     $('feed').innerHTML = recent.length
       ? recent
-          .map(
-            (m) =>
-              `<li data-open="${esc(m.id)}" tabindex="0"><span class="kind ${m.kind}">${
-                m.kind === 'in' ? 'รับเข้า' : 'เบิก'
-              }</span><div style="min-width:0"><div class="ft">${esc(
-                m.kind === 'in' ? m.vendor || SRC[m.src] || '' : m.requester + (m.purpose ? ' · ' + m.purpose : '')
-              )}</div><div class="fs">${esc(thDate(m.date))} · ${m.kind === 'in' ? 'ใบรับ' : 'ใบเบิก'} ${esc(
-                m.no
-              )} · ${esc(linesText(m))}</div></div><span class="fv">${fmtB(moveValue(m))}</span></li>`
-          )
+          .map((m) => {
+            const title =
+              m.kind === 'in'
+                ? m.src === 'opening'
+                  ? 'ยอดยกมา'
+                  : m.vendor || SRC[m.src] || 'ใบรับวัสดุ'
+                : m.purpose || 'ใบเบิก';
+            const lineCount = (m.lines || []).length;
+            return `<li data-open="${esc(m.id)}" tabindex="0" title="คลิกเพื่อดูรายละเอียด"><span class="kind ${
+              m.kind
+            }">${m.kind === 'in' ? 'รับเข้า' : 'เบิก'}</span><div style="min-width:0"><div class="ft">${esc(
+              title
+            )} · จำนวน ${lineCount} รายการ</div><div class="fs">${esc(thDate(m.date))} · ${
+              m.kind === 'in' ? 'ใบรับ' : 'ใบเบิก'
+            } ${esc(m.no)}</div></div><span class="fv">${fmtB(moveValue(m))}</span></li>`;
+          })
           .join('')
       : '<div class="dempty">ยังไม่มีการรับหรือเบิกวัสดุ</div>';
 
@@ -2899,6 +2905,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     return isFinite(n) ? n : 0;
   };
   function mapImport(rows: any[][]) {
+    rebuildLedgers();
     let h = rows.findIndex(
       (r) => r.some((c) => /ชื่อ/.test(String(c || ''))) && r.some((c) => /หน่วย/.test(String(c || '')))
     );
@@ -2923,8 +2930,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       fallbackOrder.forEach((k, i) => (map[k] = i));
     }
     if (map.name == null || map.unit == null) return null;
-    const have = new Set(materials.map((m) => m.name)),
-      seen = new Set<string>(),
+    const seen = new Set<string>(),
       out: any[] = [];
     rows.slice(h + 1).forEach((r, i) => {
       const g = (k: string) =>
@@ -2933,35 +2939,72 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
           : String(r[map[k]] ?? '')
               .replace(/\s+/g, ' ')
               .trim();
+      const rawName = g('name');
+      const rawCode = g('code');
+      const rawCat = g('cat');
+      const rawUnit = g('unit');
+      const rawLoc = g('loc');
+      const rawNote = g('note');
+      const rawQty = g('qty');
+      const rawPrice = g('price');
+      const rawMax = g('max');
+      const rawMin = g('min');
+      if (!rawName && !rawUnit && !rawNote && !rawCode && !rawLoc && !rawQty && !rawPrice && !rawMax && !rawMin) return;
+      const existingMat = rawName ? materials.find((m) => m.name === rawName) : null;
+      const hasQty = rawQty !== '';
+      const hasPrice = rawPrice !== '';
+      const hasMax = rawMax !== '';
+      const hasMin = rawMin !== '';
       const it: any = {
         row: h + 2 + i,
-        name: g('name'),
-        code: g('code'),
-        cat: g('cat') || 'วัสดุอื่น',
-        unit: g('unit'),
-        loc: g('loc'),
-        note: g('note'),
-        qty: numOf(g('qty')),
-        price: numOf(g('price')),
-        max: numOrNull(g('max')),
-        min: numOrNull(g('min')),
+        name: rawName,
+        code: existingMat ? rawCode || existingMat.code || '' : rawCode,
+        cat: existingMat ? rawCat || existingMat.cat || 'วัสดุอื่น' : rawCat || 'วัสดุอื่น',
+        unit: existingMat ? rawUnit || existingMat.unit || '' : rawUnit,
+        loc: existingMat ? rawLoc || existingMat.loc || '' : rawLoc,
+        note: existingMat ? rawNote || existingMat.note || '' : rawNote,
+        qty: numOf(rawQty),
+        price: numOf(rawPrice),
+        max: hasMax ? numOrNull(rawMax) : existingMat ? existingMat.max : null,
+        min: hasMin ? numOrNull(rawMin) : existingMat ? existingMat.min : null,
+        hasQty,
+        hasPrice,
+        hasMax,
+        hasMin,
+        mode: existingMat ? 'update' : 'new',
+        existingId: existingMat ? existingMat.id : null,
+        sysQty: 0,
+        hasExistingInMove: false,
+        qtyMismatch: false,
+        qtyChoice: 'excel',
+        confirmedQty: true,
       };
-      if (!it.name && !it.unit && !it.note && !it.code && !it.loc) return;
-      if (!it.name || !it.unit) {
+      if (!it.name) {
         it.st = 'bad';
-        it.why = !it.name ? 'ไม่มีชื่อวัสดุ' : 'ไม่มีหน่วยนับ';
-      } else if (have.has(it.name)) {
-        it.st = 'skip';
-        it.why = 'มีในทะเบียนแล้ว';
+        it.why = 'ไม่มีชื่อวัสดุ';
       } else if (seen.has(it.name)) {
         it.st = 'skip';
         it.why = 'ชื่อซ้ำในไฟล์';
+      } else if (!it.unit) {
+        it.st = 'bad';
+        it.why = 'ไม่มีหน่วยนับ';
       } else if (it.max != null && it.min != null && it.min > it.max) {
         it.st = 'bad';
         it.why = 'อย่างต่ำมากกว่าอย่างสูง';
       } else if (it.qty < 0 || it.price < 0) {
         it.st = 'bad';
         it.why = 'จำนวน/ราคาติดลบ';
+      } else if (existingMat) {
+        const sysQty = r2(current(existingMat.id).q);
+        const hasExistingInMove = moves.some(
+          (mv) => mv.kind === 'in' && (mv.lines || []).some((l: any) => l.mid === existingMat.id)
+        );
+        it.sysQty = sysQty;
+        it.hasExistingInMove = hasExistingInMove;
+        it.qtyMismatch = hasQty && Math.abs(r2(it.qty) - sysQty) > 1e-6;
+        it.confirmedQty = !it.qtyMismatch;
+        it.st = 'ok';
+        it.why = it.qtyMismatch ? 'รอยืนยันจำนวน' : 'อัปเดตข้อมูล';
       } else {
         it.st = 'ok';
         it.why = 'เพิ่มใหม่';
@@ -2976,46 +3019,179 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     const fy = CUR_FY - 543;
     return fy - 1 + '-10-01';
   }
+  function effectiveImpQty(x: any) {
+    if (x.mode === 'update') {
+      if (!x.hasQty) return x.sysQty;
+      if (x.qtyMismatch && x.qtyChoice === 'system') return x.sysQty;
+      return x.qty;
+    }
+    return x.qty;
+  }
   function renderImport() {
     const ok = impItems.filter((x) => x.st === 'ok'),
-      oq = ok.filter((x) => x.qty > 0);
-    $('impRows').innerHTML = impItems
-      .map(
+      newItems = ok.filter((x) => x.mode === 'new'),
+      updItems = ok.filter((x) => x.mode === 'update'),
+      unconfirmedMismatches = updItems.filter((x) => x.qtyMismatch && !x.confirmedQty),
+      needOpenLines = ok.filter(
         (x) =>
-          `<tr><td class="sub">${x.row}</td><td>${esc(x.name)}</td><td class="sub">${esc(
-            x.code || '—'
-          )}</td><td>${esc(x.cat)}</td><td>${esc(x.unit)}</td><td class="sub">${esc(
-            x.note || '—'
-          )}</td><td class="sub">${esc(x.loc || '—')}</td><td class="num">${
-            x.max != null || x.min != null
-              ? (x.max != null ? fmtQ(x.max) : '-') + ' / ' + (x.min != null ? fmtQ(x.min) : '-')
-              : ''
-          }</td><td class="num">${x.qty ? fmtQ(x.qty) : ''}</td><td class="num">${
-            x.price ? fmtB(x.price) : ''
-          }</td><td><span class="st ${x.st}">${esc(x.why)}</span></td></tr>`
-      )
+          (x.mode === 'new' && x.qty > 0) ||
+          (x.mode === 'update' && !x.hasExistingInMove && effectiveImpQty(x) > 0)
+      );
+    $('impRows').innerHTML = impItems
+      .map((x) => {
+        let badgeHtml = `<span class="st ${x.st}">${esc(x.why)}</span>`;
+        if (x.st === 'ok' && x.mode === 'update') {
+          if (x.qtyMismatch && !x.confirmedQty) {
+            badgeHtml = `<span class="st warn">รอยืนยันจำนวน (ในระบบ ${fmtQ(x.sysQty)})</span>`;
+          } else if (x.qtyMismatch && x.confirmedQty) {
+            badgeHtml =
+              x.qtyChoice === 'excel'
+                ? `<span class="st upd">อัปเดต · ใช้ยอด Excel (${fmtQ(x.qty)})</span>`
+                : `<span class="st upd">อัปเดต · คงยอดในระบบ (${fmtQ(x.sysQty)})</span>`;
+          } else {
+            badgeHtml = `<span class="st upd">อัปเดตข้อมูล</span>`;
+          }
+        }
+        const qtyCell =
+          x.mode === 'update' && x.qtyMismatch
+            ? `<div>${fmtQ(x.qty)}</div><div class="sub" style="font-size:0.72rem;color:var(--warn)">ในระบบ: ${fmtQ(
+                x.sysQty
+              )}</div>`
+            : x.hasQty || x.qty
+            ? fmtQ(x.qty)
+            : '';
+        return `<tr><td class="sub">${x.row}</td><td>${esc(x.name)}</td><td class="sub">${esc(
+          x.code || '—'
+        )}</td><td>${esc(x.cat)}</td><td>${esc(x.unit)}</td><td class="sub">${esc(
+          x.note || '—'
+        )}</td><td class="sub">${esc(x.loc || '—')}</td><td class="num">${
+          x.max != null || x.min != null
+            ? (x.max != null ? fmtQ(x.max) : '-') + ' / ' + (x.min != null ? fmtQ(x.min) : '-')
+            : ''
+        }</td><td class="num">${qtyCell}</td><td class="num">${
+          x.hasPrice || x.price ? fmtB(x.price) : ''
+        }</td><td>${badgeHtml}</td></tr>`;
+      })
       .join('');
-    $('impOpen').hidden = !oq.length;
-    if (oq.length && !$('impDate').value) $('impDate').value = fyStart();
-    if (oq.length) {
+    $('impOpen').hidden = !needOpenLines.length;
+    if (needOpenLines.length && !$('impDate').value) $('impDate').value = fyStart();
+    if (needOpenLines.length) {
       const fy = fyOf($('impDate').value);
       if (fy && !$('impNo').dataset.touched) $('impNo').value = fmtNo(nextSeq('in', fy), fy);
     }
     const sk = impItems.length - ok.length;
-    msg(
-      'impSum',
-      `เพิ่มใหม่ ${ok.length} รายการ${
-        oq.length
-          ? ` · มียอดยกมา ${oq.length} รายการ มูลค่า ${fmtB(oq.reduce((s, x) => s + r2(x.qty * x.price), 0))} บาท`
-          : ''
-      }${sk ? ` · ข้าม ${sk} รายการ` : ''}`
-    );
+    const sumParts: string[] = [];
+    if (newItems.length) sumParts.push(`เพิ่มใหม่ ${newItems.length} รายการ`);
+    if (updItems.length) sumParts.push(`อัปเดตข้อมูลเดิม ${updItems.length} รายการ`);
+    if (!newItems.length && !updItems.length) sumParts.push('ไม่มีรายการที่นำเข้าหรืออัปเดตได้');
+    if (unconfirmedMismatches.length) {
+      sumParts.push(`รอยืนยันจำนวนไม่ตรงกับระบบ ${unconfirmedMismatches.length} รายการ`);
+    }
+    if (sk) sumParts.push(`ข้าม ${sk} รายการ`);
+    msg('impSum', sumParts.join(' · '));
     $('impGo').disabled = !ok.length;
-    $('impGo').textContent = ok.length ? `นำเข้า ${ok.length} รายการ` : 'ไม่มีรายการให้นำเข้า';
+    if (!ok.length) {
+      $('impGo').textContent = 'ไม่มีรายการให้นำเข้า';
+    } else if (unconfirmedMismatches.length) {
+      $('impGo').textContent = `ตรวจสอบจำนวนและอัปเดต (${ok.length} รายการ)`;
+    } else if (newItems.length && updItems.length) {
+      $('impGo').textContent = `นำเข้า ${newItems.length} · อัปเดต ${updItems.length} รายการ`;
+    } else if (updItems.length) {
+      $('impGo').textContent = `อัปเดตข้อมูล ${updItems.length} รายการ`;
+    } else {
+      $('impGo').textContent = `นำเข้า ${newItems.length} รายการ`;
+    }
     $('impPrev').hidden = false;
   }
+  function closeImpQtyModal() {
+    if ($('impQtyModal')) $('impQtyModal').hidden = true;
+  }
+  function renderImpQtyModal() {
+    const mismatches = impItems.filter((x) => x.st === 'ok' && x.mode === 'update' && x.qtyMismatch);
+    const subEl = $('impQtyModalSub');
+    if (subEl) {
+      subEl.textContent = `พบรายการวัสดุที่มีในระบบแล้วแต่จำนวนในไฟล์ Excel ไม่ตรงกับยอดคงเหลือในระบบ จำนวน ${mismatches.length} รายการ กรุณาเลือกจำนวนที่ต้องการใช้ก่อนอัปเดตข้อมูล`;
+    }
+    const rowsEl = $('impQtyRows');
+    if (!rowsEl) return;
+    rowsEl.innerHTML = mismatches
+      .map(
+        (x) => `<tr data-imp-row="${x.row}">
+          <td>
+            <div style="font-weight:600">${esc(x.name)}</div>
+            <div class="sub">${esc(x.cat)} · หน่วย: ${esc(x.unit)}${
+          x.max != null || x.min != null
+            ? ` · สูง/ต่ำ: ${x.max != null ? fmtQ(x.max) : '-'}/${x.min != null ? fmtQ(x.min) : '-'}`
+            : ''
+        }</div>
+          </td>
+          <td class="num">${x.hasPrice || x.price ? fmtB(x.price) : '—'}</td>
+          <td class="num"><span style="font-weight:600">${fmtQ(x.sysQty)}</span> ${esc(x.unit)}</td>
+          <td class="num"><span style="font-weight:700;color:var(--warn)">${fmtQ(x.qty)}</span> ${esc(x.unit)}</td>
+          <td>
+            <div class="imp-choice-group">
+              <button type="button" class="btn small ${
+                x.qtyChoice === 'excel' ? 'primary' : ''
+              }" data-imp-choice="excel" data-row="${x.row}">
+                ใช้ตาม Excel (${fmtQ(x.qty)})
+              </button>
+              <button type="button" class="btn small ${
+                x.qtyChoice === 'system' ? 'primary' : ''
+              }" data-imp-choice="system" data-row="${x.row}">
+                คงยอดในระบบ (${fmtQ(x.sysQty)})
+              </button>
+            </div>
+          </td>
+        </tr>`
+      )
+      .join('');
+  }
+  function openImpQtyModal() {
+    renderImpQtyModal();
+    if ($('impQtyModal')) $('impQtyModal').hidden = false;
+  }
+  $('impQtyClose')?.addEventListener('click', closeImpQtyModal);
+  $('impQtyCancel')?.addEventListener('click', closeImpQtyModal);
+  $('impQtyAllExcel')?.addEventListener('click', () => {
+    impItems.forEach((x) => {
+      if (x.st === 'ok' && x.mode === 'update' && x.qtyMismatch) {
+        x.qtyChoice = 'excel';
+      }
+    });
+    renderImpQtyModal();
+  });
+  $('impQtyAllSys')?.addEventListener('click', () => {
+    impItems.forEach((x) => {
+      if (x.st === 'ok' && x.mode === 'update' && x.qtyMismatch) {
+        x.qtyChoice = 'system';
+      }
+    });
+    renderImpQtyModal();
+  });
+  $('impQtyRows')?.addEventListener('click', (e: any) => {
+    const btn = e.target?.closest?.('[data-imp-choice]');
+    if (!btn) return;
+    const rowNum = Number(btn.dataset.row);
+    const choice = btn.dataset.impChoice;
+    const item = impItems.find((x) => x.row === rowNum);
+    if (item && (choice === 'excel' || choice === 'system')) {
+      item.qtyChoice = choice;
+      renderImpQtyModal();
+    }
+  });
+  $('impQtyConfirm')?.addEventListener('click', async () => {
+    impItems.forEach((x) => {
+      if (x.st === 'ok' && x.mode === 'update' && x.qtyMismatch) {
+        x.confirmedQty = true;
+      }
+    });
+    closeImpQtyModal();
+    renderImport();
+    await executeImport();
+  });
   function closeImport() {
     impItems = [];
+    closeImpQtyModal();
     $('impPrev').hidden = true;
     $('impFile').value = '';
     $('impDate').value = '';
@@ -3059,14 +3235,23 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       msg('impMsg', 'อ่านไฟล์ไม่ได้: ' + (err?.message || err), 1);
     }
   });
-  $('impGo')?.addEventListener('click', async () => {
+  async function executeImport() {
     if (!db) return msg('impSum', 'เบราว์เซอร์นี้บันทึกข้อมูลไม่ได้', 1);
-    const ok = impItems.filter((x) => x.st === 'ok' && !materials.some((m) => m.name === x.name));
+    const ok = impItems.filter((x) => x.st === 'ok');
     if (!ok.length) return;
-    const oq = ok.filter((x) => x.qty > 0);
+    const unconfirmed = ok.filter((x) => x.mode === 'update' && x.qtyMismatch && !x.confirmedQty);
+    if (unconfirmed.length) {
+      openImpQtyModal();
+      return;
+    }
+    const needOpenLines = ok.filter(
+      (x) =>
+        (x.mode === 'new' && x.qty > 0) ||
+        (x.mode === 'update' && !x.hasExistingInMove && effectiveImpQty(x) > 0)
+    );
     let n: any = null,
       date = '';
-    if (oq.length) {
+    if (needOpenLines.length) {
       date = $('impDate').value;
       if (!date) {
         $('impDate').focus();
@@ -3078,16 +3263,29 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     }
     const b = $('impGo');
     b.disabled = true;
-    b.textContent = 'กำลังนำเข้า…';
+    b.textContent = 'กำลังบันทึกข้อมูล…';
     const now = new Date().toISOString(),
-      lines: any[] = [];
-    let done = 0;
+      newOpeningLines: any[] = [],
+      dirtyMoves = new Map<string, any>();
+    const getEditableMove = (mvId: string) => {
+      if (dirtyMoves.has(mvId)) return dirtyMoves.get(mvId);
+      const orig = moves.find((m) => m.id === mvId);
+      if (!orig) return null;
+      const copy = {
+        ...orig,
+        lines: (orig.lines || []).map((l: any) => ({ ...l })),
+      };
+      delete copy.id;
+      dirtyMoves.set(mvId, copy);
+      return copy;
+    };
+    let createdCount = 0,
+      updatedCount = 0;
     try {
       for (const x of ok) {
-        const id = db.collection('materials').doc().id;
-        await db
-          .doc('materials/' + id)
-          .set({
+        if (x.mode === 'new') {
+          const id = db.collection('materials').doc().id;
+          await db.doc('materials/' + id).set({
             name: x.name,
             code: x.code || '',
             cat: x.cat,
@@ -3099,10 +3297,81 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
             createdAt: now,
             updatedAt: now,
           });
-        done++;
-        if (x.qty > 0) lines.push({ mid: id, qty: x.qty, price: x.price });
+          createdCount++;
+          if (x.qty > 0) {
+            newOpeningLines.push({ mid: id, qty: x.qty, price: x.price });
+          }
+        } else if (x.mode === 'update' && x.existingId) {
+          const existingMat = materials.find((m) => m.id === x.existingId);
+          await db.doc('materials/' + x.existingId).set({
+            name: x.name,
+            code: x.code || '',
+            cat: x.cat,
+            unit: x.unit,
+            loc: x.loc || '',
+            note: x.note,
+            max: x.max,
+            min: x.min,
+            createdAt: existingMat?.createdAt || now,
+            updatedAt: now,
+          });
+          updatedCount++;
+          const wantPriceUpdate = x.hasPrice && x.price >= 0;
+          const useExcelQty = x.hasQty && (!x.qtyMismatch || x.qtyChoice === 'excel');
+          const targetQty = useExcelQty ? r2(x.qty) : r2(x.sysQty);
+          const qtyDelta = useExcelQty ? r2(targetQty - x.sysQty) : 0;
+          const inMovesForMat = moves.filter(
+            (mv) => mv.kind === 'in' && (mv.lines || []).some((l: any) => l.mid === x.existingId)
+          );
+          if (inMovesForMat.length > 0) {
+            const preferredMove =
+              inMovesForMat.find((mv) => mv.src === 'opening') ||
+              inMovesForMat[inMovesForMat.length - 1];
+            const editablePref = getEditableMove(preferredMove.id);
+            if (editablePref) {
+              const line = editablePref.lines.find((l: any) => l.mid === x.existingId);
+              if (line) {
+                if (wantPriceUpdate) {
+                  line.price = x.price;
+                }
+                if (Math.abs(qtyDelta) > 1e-6) {
+                  line.qty = Math.max(0, r2(numOf(line.qty) + qtyDelta));
+                }
+                editablePref.updatedAt = now;
+              }
+            }
+            if (wantPriceUpdate && x.price > 0) {
+              for (const mv of inMovesForMat) {
+                if (mv.id === preferredMove.id) continue;
+                const hasZeroPrice = (mv.lines || []).some(
+                  (l: any) => l.mid === x.existingId && numOf(l.price) === 0
+                );
+                if (hasZeroPrice) {
+                  const editableOther = getEditableMove(mv.id);
+                  if (editableOther) {
+                    editableOther.lines.forEach((l: any) => {
+                      if (l.mid === x.existingId && numOf(l.price) === 0) {
+                        l.price = x.price;
+                      }
+                    });
+                    editableOther.updatedAt = now;
+                  }
+                }
+              }
+            }
+          } else if (targetQty > 0) {
+            newOpeningLines.push({
+              mid: x.existingId,
+              qty: targetQty,
+              price: wantPriceUpdate ? x.price : 0,
+            });
+          }
+        }
       }
-      if (lines.length) {
+      for (const [mvId, mvData] of dirtyMoves.entries()) {
+        await db.doc('moves/' + mvId).set(mvData);
+      }
+      if (newOpeningLines.length && n) {
         const id = db.collection('moves').doc().id;
         await db.doc('moves/' + id).set({
           kind: 'in',
@@ -3116,19 +3385,27 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
           vendor: '',
           invoiceNo: '',
           note: 'นำเข้าจากไฟล์ Excel',
-          lines,
+          lines: newOpeningLines,
           createdAt: now,
           updatedAt: now,
         });
       }
       closeImport();
-      toast(`นำเข้าวัสดุ ${done} รายการแล้ว${lines.length ? ' พร้อมยอดยกมา' : ''}`);
+      const parts: string[] = [];
+      if (createdCount) parts.push(`เพิ่มวัสดุใหม่ ${createdCount} รายการ`);
+      if (updatedCount) parts.push(`อัปเดตข้อมูลวัสดุ ${updatedCount} รายการ`);
+      toast(parts.join(' · ') || 'ดำเนินการสำเร็จ');
     } catch (err) {
-      msg('impSum', `นำเข้าได้ ${done} รายการ แล้วเกิดข้อผิดพลาด: ` + errText(err), 1);
+      msg(
+        'impSum',
+        `ดำเนินการได้บางส่วนแล้วเกิดข้อผิดพลาด: ` + errText(err),
+        1
+      );
       b.disabled = false;
-      b.textContent = 'นำเข้า';
+      b.textContent = 'นำเข้า / อัปเดต';
     }
-  });
+  }
+  $('impGo')?.addEventListener('click', executeImport);
   $('impTpl')?.addEventListener('click', () => {
     if (typeof XLSX === 'undefined') {
       toast('โหลดตัวสร้างไฟล์ Excel ไม่สำเร็จ');
@@ -3164,7 +3441,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     const help = [
       ['วิธีกรอก'],
       ['กรอกในแผ่นงาน “วัสดุ” แถวละ 1 รายการ เริ่มแถวที่ 2'],
-      ['ชื่อหรือชนิดวัสดุ และ หน่วยที่นับ ต้องกรอก · ชื่อที่มีในทะเบียนแล้วจะถูกข้าม'],
+      ['ชื่อหรือชนิดวัสดุ และ หน่วยที่นับ ต้องกรอก · หากชื่อตรงกับที่มีในระบบแล้ว ระบบจะอัปเดตข้อมูลเพิ่มเติม (เช่น ราคา อย่างสูง/อย่างต่ำ) ให้โดยอัตโนมัติ'],
       ['ประเภทวัสดุ เว้นว่างได้ (จะเป็น “วัสดุอื่น”) หรือพิมพ์ประเภทใหม่เองได้'],
       ['รหัสวัสดุ, ขนาดหรือลักษณะ และ ที่เก็บ เว้นว่างได้ (ข้อมูลจะแสดงในหัวแบบฟอร์ม “บัญชีวัสดุ”)'],
       ['จำนวนอย่างสูง / จำนวนอย่างต่ำ เว้นว่างได้ (จำนวนอย่างต่ำต้องไม่มากกว่าจำนวนอย่างสูง)'],
