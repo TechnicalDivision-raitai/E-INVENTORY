@@ -83,6 +83,17 @@
           "maxLength": 120,
           "description": "Admin email that last reviewed the request."
         },
+        "passwordMode": {
+          "type": "string",
+          "enum": ["unset", "none", "password"],
+          "description": "User preference for personal login password after approval."
+        },
+        "appPasswordHash": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^$|^v1:[a-f0-9]{16}:[a-f0-9]{64}$",
+          "description": "Salted SHA-256 hash of user's personal app password, or empty string."
+        },
         "reviewedAt": {
           "type": "string",
           "format": "date-time",

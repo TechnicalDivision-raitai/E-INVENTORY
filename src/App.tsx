@@ -27,9 +27,14 @@ import {
   X,
   ShieldCheck,
   LogOut,
+  KeyRound,
+  Lock,
+  Eye,
+  EyeOff,
+  Building2,
 } from 'lucide-react';
 import { bootKumWatsaduApp } from './kumwatsaduController';
-import { InstallAndPortableSection } from './PWAInstallButton';
+import { InstallAndPortableSection, TopbarPWAInstallButton } from './PWAInstallButton';
 import { GoogleDriveBackupPanel } from './GoogleDriveBackupPanel';
 import { AccessGate, GateReason } from './AccessGate';
 import { AdminAccessModal } from './AdminAccessModal';
@@ -37,21 +42,33 @@ import {
   AccessRegistrationForm,
   AccessRequestDoc,
   clearLocalLicenseCache,
+  clearSessionUnlocked,
   DEFAULT_MAX_DEVICES,
   fetchMyAccessRequest,
   getDeviceLabel,
+  getInitialCachedSessionSync,
+  getLocalUserLock,
+  getLocalUserLockSync,
   getOrCreateDeviceId,
+  getStoredDeviceIdSync,
   isLicenseDateExpired,
   isOfflineError,
   isOwnerAdminUser,
+  isSessionUnlockedForUid,
+  LocalLicenseCache,
+  markSessionUnlocked,
   OFFLINE_GRACE_DAYS,
+  PasswordMode,
   requestDeviceBinding,
   saveLocalLicenseCache,
+  saveLocalUserLock,
   signInWithGoogleForAccess,
   signOutFromAccess,
   submitAccessRequest,
   subscribeAllAccessRequests,
   subscribeAuthState,
+  updateUserAppPasswordSetting,
+  verifyAppPassword,
   verifyLocalLicenseCache,
 } from './accessControl';
 
@@ -98,28 +115,38 @@ function formatLastBackupDateTime(rawDate: string | null, rawAt: string | null):
 
 interface WorkspaceProps {
   user: User | null;
+  cachedLicense: LocalLicenseCache | null;
   isAdmin: boolean;
   deviceId: string;
   deviceLabel: string;
   offlineDaysRemaining: number;
   accessDoc: AccessRequestDoc | null;
   pendingAdminCount: number;
+  passwordMode: PasswordMode;
   onOpenAdmin: () => void;
   onRecheckAccess: () => Promise<void>;
   onSignOutAccess: () => Promise<void>;
+  onSetOrChangePassword: (oldPassword: string | null, newPassword: string) => Promise<void>;
+  onRemovePassword: (oldPassword: string) => Promise<void>;
+  onLockNow: () => void;
 }
 
 function KumWatsaduWorkspace({
   user,
+  cachedLicense,
   isAdmin,
   deviceId,
   deviceLabel,
   offlineDaysRemaining,
   accessDoc,
   pendingAdminCount,
+  passwordMode,
   onOpenAdmin,
   onRecheckAccess,
   onSignOutAccess,
+  onSetOrChangePassword,
+  onRemovePassword,
+  onLockNow,
 }: WorkspaceProps) {
   const [materialCount, setMaterialCount] = useState<number>(0);
   const [lastBackupRaw, setLastBackupRaw] = useState<string | null>(() => {
@@ -153,6 +180,63 @@ function KumWatsaduWorkspace({
   } | null>(null);
   const [isResolvingFolderConflict, setIsResolvingFolderConflict] = useState<boolean>(false);
   const [mobileNavOpen, setMobileNavOpen] = useState<boolean>(false);
+
+  const [pwPanelMode, setPwPanelMode] = useState<'idle' | 'set' | 'change' | 'remove'>('idle');
+  const [pwOld, setPwOld] = useState<string>('');
+  const [pwNew, setPwNew] = useState<string>('');
+  const [pwConfirm, setPwConfirm] = useState<string>('');
+  const [pwShow, setPwShow] = useState<boolean>(false);
+  const [pwSaving, setPwSaving] = useState<boolean>(false);
+  const [pwErr, setPwErr] = useState<string>('');
+  const [pwMsg, setPwMsg] = useState<string>('');
+
+  const resetPwForm = () => {
+    setPwPanelMode('idle');
+    setPwOld('');
+    setPwNew('');
+    setPwConfirm('');
+    setPwShow(false);
+    setPwErr('');
+  };
+
+  const handlePwSettingsSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPwErr('');
+    setPwMsg('');
+    if (pwPanelMode === 'set' || pwPanelMode === 'change') {
+      if (pwNew.length < 4) {
+        setPwErr('กรุณากำหนดรหัสผ่านใหม่อย่างน้อย 4 ตัวอักษร');
+        return;
+      }
+      if (pwNew !== pwConfirm) {
+        setPwErr('รหัสผ่านใหม่และยืนยันรหัสผ่านไม่ตรงกัน');
+        return;
+      }
+    }
+    if ((pwPanelMode === 'change' || pwPanelMode === 'remove') && !pwOld) {
+      setPwErr('กรุณากรอกรหัสผ่านเดิมเพื่อยืนยัน');
+      return;
+    }
+
+    setPwSaving(true);
+    try {
+      if (pwPanelMode === 'set') {
+        await onSetOrChangePassword(null, pwNew);
+        setPwMsg('ตั้งรหัสผ่านเข้าระบบส่วนตัวเรียบร้อยแล้ว (ปิดเบราว์เซอร์ = ออกจากระบบทุกครั้ง)');
+      } else if (pwPanelMode === 'change') {
+        await onSetOrChangePassword(pwOld, pwNew);
+        setPwMsg('เปลี่ยนรหัสผ่านเข้าระบบเรียบร้อยแล้ว');
+      } else if (pwPanelMode === 'remove') {
+        await onRemovePassword(pwOld);
+        setPwMsg('นำรหัสผ่านออกแล้ว (เข้าใช้งานครั้งต่อไปแบบไม่กำหนดรหัสผ่าน)');
+      }
+      resetPwForm();
+    } catch (err) {
+      setPwErr(err instanceof Error ? err.message : 'ไม่สามารถบันทึกการตั้งค่ารหัสผ่านได้');
+    } finally {
+      setPwSaving(false);
+    }
+  };
 
   useEffect(() => {
     if (!mobileNavOpen) return;
@@ -462,7 +546,7 @@ function KumWatsaduWorkspace({
       <div className="app-shell">
         {/* Sidebar Navigation (Dark Deep Emerald-Forest matching reference layout) */}
         <aside className={`app-sidebar no-print${mobileNavOpen ? ' is-open' : ''}`} id="appSidebar">
-          <div className="sidebar-brand" onClick={() => switchTab('set')} style={{ cursor: 'pointer' }} title="คลิกเพื่อแก้ไขชื่อหน่วยงาน">
+          <div className="sidebar-brand" onClick={() => switchTab('org')} style={{ cursor: 'pointer' }} title="คลิกเพื่อแก้ไขข้อมูลหน่วยงาน">
             <img className="logo" id="mastLogo" alt="โลโก้หน่วยงาน" hidden />
             <div className="logo-fallback" id="mastLogoFallback">
               <Boxes className="h-5 w-5" />
@@ -555,9 +639,13 @@ function KumWatsaduWorkspace({
 
             <div className="nav-divider" />
 
+            <button role="tab" aria-selected="false" data-tab="org">
+              <Building2 className="nav-ic" />
+              <span className="nav-lbl">ตั้งค่าข้อมูลหน่วยงาน</span>
+            </button>
             <button role="tab" aria-selected="false" data-tab="set">
               <Settings className="nav-ic" />
-              <span className="nav-lbl">ตั้งค่า / สำรองข้อมูล</span>
+              <span className="nav-lbl">ตั้งค่า / สำรองข้อมูลระบบ</span>
             </button>
             <button role="tab" aria-selected="false" data-tab="install">
               <Monitor className="nav-ic" />
@@ -626,6 +714,7 @@ function KumWatsaduWorkspace({
                 <HardDrive className="h-3.5 w-3.5" />
                 <span>จัดเก็บในเบราว์เซอร์</span>
               </button>
+              <TopbarPWAInstallButton onOpenInstallTab={() => switchTab('install')} />
               {isAdmin && (
                 <button
                   type="button"
@@ -660,8 +749,19 @@ function KumWatsaduWorkspace({
               <span className="topbar-role" id="fyStamp" hidden>
                 ปีงบประมาณ —
               </span>
-              <div className="topbar-avatar" title={user?.email || 'ผู้ใช้งาน'}>
-                {(user?.displayName || user?.email || 'พ').charAt(0).toUpperCase()}
+              <div
+                className="topbar-avatar"
+                title={user?.email || cachedLicense?.email || 'ผู้ใช้งาน'}
+              >
+                {(
+                  user?.displayName ||
+                  user?.email ||
+                  cachedLicense?.fullName ||
+                  cachedLicense?.email ||
+                  'พ'
+                )
+                  .charAt(0)
+                  .toUpperCase()}
               </div>
             </div>
           </div>
@@ -1311,14 +1411,14 @@ function KumWatsaduWorkspace({
                     <span className="sub" id="vSelfSum"></span>
                   </div>
                   <div className="rowact no-print">
-                    <button type="button" className="btn small" onClick={() => switchTab('set')}>
+                    <button type="button" className="btn small" onClick={() => switchTab('org')}>
                       แก้ไขข้อมูลหน่วยงาน / ผู้ลงนาม
                     </button>
                   </div>
                 </div>
                 <p className="hint">
                   แสดงเฉพาะวัสดุที่มียอดคงเหลือประจำกองตามที่ตั้งค่าไว้ โดยแยกรายการตามราคาทุนที่รับเข้าจริง (FIFO)
-                  ใช้ข้อมูลหน่วยงานและผู้ลงนามจากหน้า “ตั้งค่า / สำรองข้อมูล”
+                  ใช้ข้อมูลหน่วยงานและผู้ลงนามจากหน้า “ตั้งค่าข้อมูลหน่วยงาน”
                 </p>
                 <div className="repbar" style={{ marginBottom: 10 }}>
                   <label htmlFor="vDate" className="sub">
@@ -1412,8 +1512,8 @@ function KumWatsaduWorkspace({
             </div>
           </section>
 
-          {/* ตั้งค่า */}
-          <section id="view-set" hidden>
+          {/* ตั้งค่าข้อมูลหน่วยงาน */}
+          <section id="view-org" hidden>
             <div className="stack">
               <form className="card" id="setForm" autoComplete="off">
                 <div className="cardhead">
@@ -1585,11 +1685,16 @@ function KumWatsaduWorkspace({
                 <div className="formbar">
                   <span className="msg" id="gMsg"></span>
                   <button type="submit" className="btn primary">
-                    บันทึกการตั้งค่า
+                    บันทึกข้อมูลหน่วยงาน
                   </button>
                 </div>
               </form>
+            </div>
+          </section>
 
+          {/* ตั้งค่า / สำรองข้อมูลระบบ */}
+          <section id="view-set" hidden>
+            <div className="stack">
               <div className="card">
                 <div className="cardhead">
                   <div>
@@ -1660,7 +1765,9 @@ function KumWatsaduWorkspace({
                 <div className="license-status-grid">
                   <div className="license-kv">
                     <span>บัญชีที่ยืนยันสิทธิ์</span>
-                    <strong>{user?.email || accessDoc?.email || 'ยืนยันในเครื่องนี้'}</strong>
+                    <strong>
+                      {user?.email || accessDoc?.email || cachedLicense?.email || 'ยืนยันในเครื่องนี้'}
+                    </strong>
                   </div>
                   <div className="license-kv">
                     <span>สถานะสิทธิ์</span>
@@ -1677,12 +1784,199 @@ function KumWatsaduWorkspace({
                     <strong>
                       {isAdmin
                         ? 'ไม่จำกัด (เจ้าของระบบ)'
-                        : `${accessDoc?.approvedDeviceIds?.length || 1} / ${
-                            accessDoc?.maxDevices || DEFAULT_MAX_DEVICES
+                        : `${
+                            accessDoc?.approvedDeviceIds?.length ||
+                            cachedLicense?.approvedDeviceIds?.length ||
+                            1
+                          } / ${
+                            accessDoc?.maxDevices ||
+                            cachedLicense?.maxDevices ||
+                            DEFAULT_MAX_DEVICES
                           } เครื่อง · ออฟไลน์ได้อีก ${offlineDaysRemaining} วัน`}
                     </strong>
                   </div>
                 </div>
+                <div className="pw-settings-box">
+                  <div className="pw-settings-head">
+                    <div>
+                      <div className="pw-settings-title">
+                        <KeyRound className="h-4 w-4" />
+                        <span>รหัสผ่านการเข้าระบบส่วนตัว</span>
+                      </div>
+                      <div className="pw-settings-sub">
+                        {passwordMode === 'password'
+                          ? 'ตั้งรหัสผ่านไว้แล้ว · เมื่อปิดเบราว์เซอร์ระบบจะออกจากระบบทุกครั้ง (รีเฟรชหน้าเว็บยังคงใช้งานต่อได้)'
+                          : 'ปัจจุบันไม่ได้กำหนดรหัสผ่าน · สามารถตั้งรหัสผ่านเพิ่มเติมได้ทุกเมื่อ'}
+                      </div>
+                    </div>
+                    <span className={`pw-settings-badge ${passwordMode === 'password' ? 'is-on' : 'is-off'}`}>
+                      {passwordMode === 'password' ? 'เปิดใช้รหัสผ่านส่วนตัว' : 'ไม่กำหนดรหัสผ่าน'}
+                    </span>
+                  </div>
+
+                  {pwMsg && (
+                    <div className="access-inline-ok" style={{ marginTop: 0 }}>
+                      <CheckCircle2 className="h-4 w-4 shrink-0" />
+                      <span>{pwMsg}</span>
+                    </div>
+                  )}
+
+                  {pwPanelMode === 'idle' ? (
+                    <div className="repbar" style={{ margin: 0 }}>
+                      {passwordMode === 'password' ? (
+                        <>
+                          <button
+                            type="button"
+                            className="btn"
+                            onClick={() => {
+                              setPwMsg('');
+                              setPwErr('');
+                              setPwPanelMode('change');
+                            }}
+                          >
+                            <KeyRound className="h-4 w-4" />
+                            <span>เปลี่ยนรหัสผ่าน</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="btn"
+                            onClick={() => {
+                              setPwMsg('');
+                              setPwErr('');
+                              setPwPanelMode('remove');
+                            }}
+                          >
+                            <span>เอารหัสผ่านออก</span>
+                          </button>
+                          <button type="button" className="btn" onClick={onLockNow}>
+                            <Lock className="h-4 w-4" />
+                            <span>ล็อกหน้าจอตอนนี้</span>
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn primary"
+                          onClick={() => {
+                            setPwMsg('');
+                            setPwErr('');
+                            setPwPanelMode('set');
+                          }}
+                        >
+                          <KeyRound className="h-4 w-4" />
+                          <span>ตั้งรหัสผ่านเข้าระบบส่วนตัว</span>
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <form className="pw-settings-form" onSubmit={(e) => void handlePwSettingsSubmit(e)}>
+                      <div className="pw-settings-fields">
+                        {(pwPanelMode === 'change' || pwPanelMode === 'remove') && (
+                          <label>
+                            รหัสผ่านเดิม
+                            <div className="access-pw-wrap">
+                              <input
+                                type={pwShow ? 'text' : 'password'}
+                                required
+                                autoComplete="current-password"
+                                value={pwOld}
+                                onChange={(e) => {
+                                  setPwOld(e.target.value);
+                                  setPwErr('');
+                                }}
+                                placeholder="กรอกรหัสผ่านปัจจุบัน"
+                              />
+                              <button
+                                type="button"
+                                className="access-pw-eye"
+                                onClick={() => setPwShow((v) => !v)}
+                                aria-label={pwShow ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                              >
+                                {pwShow ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                              </button>
+                            </div>
+                          </label>
+                        )}
+                        {(pwPanelMode === 'set' || pwPanelMode === 'change') && (
+                          <>
+                            <label>
+                              {pwPanelMode === 'change' ? 'รหัสผ่านใหม่ (อย่างน้อย 4 ตัว)' : 'ตั้งรหัสผ่าน (อย่างน้อย 4 ตัว)'}
+                              <div className="access-pw-wrap">
+                                <input
+                                  type={pwShow ? 'text' : 'password'}
+                                  required
+                                  minLength={4}
+                                  maxLength={64}
+                                  autoComplete="new-password"
+                                  value={pwNew}
+                                  onChange={(e) => {
+                                    setPwNew(e.target.value);
+                                    setPwErr('');
+                                  }}
+                                  placeholder="อย่างน้อย 4 ตัวอักษร"
+                                />
+                                {pwPanelMode === 'set' && (
+                                  <button
+                                    type="button"
+                                    className="access-pw-eye"
+                                    onClick={() => setPwShow((v) => !v)}
+                                    aria-label={pwShow ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                                  >
+                                    {pwShow ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                  </button>
+                                )}
+                              </div>
+                            </label>
+                            <label>
+                              ยืนยันรหัสผ่านอีกครั้ง
+                              <input
+                                type={pwShow ? 'text' : 'password'}
+                                required
+                                minLength={4}
+                                maxLength={64}
+                                autoComplete="new-password"
+                                value={pwConfirm}
+                                onChange={(e) => {
+                                  setPwConfirm(e.target.value);
+                                  setPwErr('');
+                                }}
+                                placeholder="กรอกให้ตรงกัน"
+                              />
+                            </label>
+                          </>
+                        )}
+                      </div>
+
+                      {pwErr && (
+                        <p className="msg err" style={{ margin: 0 }}>
+                          {pwErr}
+                        </p>
+                      )}
+
+                      <div className="repbar" style={{ margin: 0 }}>
+                        <button
+                          type="submit"
+                          className={`btn ${pwPanelMode === 'remove' ? 'danger' : 'primary'}`}
+                          disabled={pwSaving}
+                        >
+                          <span>
+                            {pwSaving
+                              ? 'กำลังบันทึก...'
+                              : pwPanelMode === 'set'
+                              ? 'บันทึกรหัสผ่าน'
+                              : pwPanelMode === 'change'
+                              ? 'ยืนยันเปลี่ยนรหัสผ่าน'
+                              : 'ยืนยันเอารหัสผ่านออก'}
+                          </span>
+                        </button>
+                        <button type="button" className="btn" onClick={resetPwForm} disabled={pwSaving}>
+                          ยกเลิก
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </div>
+
                 <div className="repbar" style={{ marginTop: 12, marginBottom: 0 }}>
                   <button type="button" className="btn" onClick={() => void onRecheckAccess()}>
                     <RefreshCw className="h-4 w-4" />
@@ -2011,16 +2305,133 @@ function KumWatsaduWorkspace({
   );
 }
 
+function computeInitialLockState(initialSession: ReturnType<typeof getInitialCachedSessionSync>) {
+  if (!initialSession) {
+    return {
+      authorized: false,
+      gateReason: 'loading' as GateReason,
+      passwordMode: 'unset' as PasswordMode,
+      appPasswordHash: '',
+    };
+  }
+  const { cache } = initialSession;
+  const localLock = getLocalUserLockSync(cache.uid);
+  const mode: PasswordMode =
+    cache.passwordMode === 'password' || cache.passwordMode === 'none'
+      ? cache.passwordMode
+      : localLock.passwordMode;
+  const hash =
+    mode === 'password' ? cache.appPasswordHash || localLock.appPasswordHash : '';
+
+  if (mode === 'password' && hash) {
+    if (!isSessionUnlockedForUid(cache.uid)) {
+      return {
+        authorized: false,
+        gateReason: 'password_unlock' as GateReason,
+        passwordMode: mode,
+        appPasswordHash: hash,
+      };
+    }
+    return {
+      authorized: true,
+      gateReason: 'loading' as GateReason,
+      passwordMode: mode,
+      appPasswordHash: hash,
+    };
+  }
+
+  if (!cache.isAdmin && mode === 'unset') {
+    return {
+      authorized: false,
+      gateReason: 'password_setup' as GateReason,
+      passwordMode: 'unset' as PasswordMode,
+      appPasswordHash: '',
+    };
+  }
+
+  return {
+    authorized: true,
+    gateReason: 'loading' as GateReason,
+    passwordMode: (mode === 'none' ? 'none' : 'unset') as PasswordMode,
+    appPasswordHash: '',
+  };
+}
+
+async function resolveLockForUser(params: {
+  uid: string;
+  isAdmin: boolean;
+  preferredMode?: PasswordMode;
+  preferredHash?: string;
+}): Promise<{
+  mode: PasswordMode;
+  hash: string;
+  gate: 'password_setup' | 'password_unlock' | null;
+}> {
+  const { uid, isAdmin: adminFlag, preferredMode, preferredHash } = params;
+  const localLock = await getLocalUserLock(uid);
+
+  let mode: PasswordMode;
+  let hash: string;
+
+  if (preferredMode === 'password') {
+    mode = 'password';
+    hash = preferredHash || localLock.appPasswordHash;
+    if (hash && (localLock.passwordMode !== 'password' || localLock.appPasswordHash !== hash)) {
+      await saveLocalUserLock(uid, 'password', hash);
+    }
+  } else if (preferredMode === 'none') {
+    mode = 'none';
+    hash = '';
+    if (localLock.passwordMode !== 'none' || localLock.appPasswordHash !== '') {
+      await saveLocalUserLock(uid, 'none', '');
+    }
+  } else if (preferredMode === 'unset') {
+    mode = 'unset';
+    hash = '';
+    if (localLock.passwordMode !== 'unset' || localLock.appPasswordHash !== '') {
+      await saveLocalUserLock(uid, 'unset', '');
+    }
+  } else {
+    mode = localLock.passwordMode;
+    hash = mode === 'password' ? localLock.appPasswordHash : '';
+  }
+
+  if (mode === 'password' && hash) {
+    if (!isSessionUnlockedForUid(uid)) {
+      return { mode, hash, gate: 'password_unlock' };
+    }
+    return { mode, hash, gate: null };
+  }
+
+  if (!adminFlag && mode === 'unset') {
+    return { mode: 'unset', hash: '', gate: 'password_setup' };
+  }
+
+  return { mode: mode === 'none' ? 'none' : 'unset', hash: '', gate: null };
+}
+
 export default function App() {
+  const [initialSession] = useState(() => getInitialCachedSessionSync());
+  const [initialLock] = useState(() => computeInitialLockState(initialSession));
+
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState<boolean>(false);
-  const [deviceId, setDeviceId] = useState<string>('');
+  const [deviceId, setDeviceId] = useState<string>(
+    () => initialSession?.deviceId || getStoredDeviceIdSync()
+  );
   const [deviceLabel, setDeviceLabel] = useState<string>(() => getDeviceLabel());
-  const [gateReason, setGateReason] = useState<GateReason>('loading');
-  const [authorized, setAuthorized] = useState<boolean>(false);
-  const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [cachedLicense, setCachedLicense] = useState<LocalLicenseCache | null>(
+    () => initialSession?.cache || null
+  );
+  const [gateReason, setGateReason] = useState<GateReason>(() => initialLock.gateReason);
+  const [authorized, setAuthorized] = useState<boolean>(() => initialLock.authorized);
+  const [isAdmin, setIsAdmin] = useState<boolean>(() => Boolean(initialSession?.cache.isAdmin));
+  const [passwordMode, setPasswordMode] = useState<PasswordMode>(() => initialLock.passwordMode);
+  const [appPasswordHash, setAppPasswordHash] = useState<string>(() => initialLock.appPasswordHash);
   const [accessDoc, setAccessDoc] = useState<AccessRequestDoc | null>(null);
-  const [offlineDaysRemaining, setOfflineDaysRemaining] = useState<number>(OFFLINE_GRACE_DAYS);
+  const [offlineDaysRemaining, setOfflineDaysRemaining] = useState<number>(
+    () => initialSession?.daysRemaining ?? OFFLINE_GRACE_DAYS
+  );
   const [busy, setBusy] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [adminModalOpen, setAdminModalOpen] = useState<boolean>(false);
@@ -2028,7 +2439,7 @@ export default function App() {
   const [adminLoading, setAdminLoading] = useState<boolean>(false);
   const [adminError, setAdminError] = useState<string>('');
 
-  const wasAuthorizedRef = useRef<boolean>(false);
+  const wasAuthorizedRef = useRef<boolean>(initialLock.authorized);
 
   useEffect(() => {
     void getOrCreateDeviceId().then((id) => {
@@ -2047,24 +2458,83 @@ export default function App() {
 
   const evaluateAccess = useCallback(
     async (silent = false) => {
-      if (!authReady || !deviceId) return;
+      if (!deviceId) return;
+      if (!authReady) {
+        const fastCheck = await verifyLocalLicenseCache(deviceId, null);
+        if (fastCheck.valid && fastCheck.cache) {
+          setCachedLicense(fastCheck.cache);
+          setIsAdmin(fastCheck.cache.isAdmin);
+          setOfflineDaysRemaining(fastCheck.daysRemaining);
+          const lockRes = await resolveLockForUser({
+            uid: fastCheck.cache.uid,
+            isAdmin: fastCheck.cache.isAdmin,
+            preferredMode: fastCheck.cache.passwordMode,
+            preferredHash: fastCheck.cache.appPasswordHash,
+          });
+          setPasswordMode(lockRes.mode);
+          setAppPasswordHash(lockRes.hash);
+          if (lockRes.gate) {
+            setAuthorized(false);
+            setGateReason(lockRes.gate);
+            if (wasAuthorizedRef.current) window.location.reload();
+          } else {
+            setAuthorized(true);
+            wasAuthorizedRef.current = true;
+          }
+        } else if (wasAuthorizedRef.current) {
+          setAuthorized(false);
+          setCachedLicense(null);
+          setGateReason(
+            fastCheck.expiredLicense
+              ? 'expired'
+              : fastCheck.expired30Days && !navigator.onLine
+              ? 'offline_30d_expired'
+              : 'unauthenticated'
+          );
+          window.location.reload();
+        }
+        return;
+      }
+
       if (!silent) {
         setErrorMsg('');
       }
 
       if (!user) {
         const localCheck = await verifyLocalLicenseCache(deviceId, null);
-        if (!navigator.onLine && localCheck.valid && localCheck.cache) {
+        if (localCheck.valid && localCheck.cache) {
+          setCachedLicense(localCheck.cache);
           setIsAdmin(localCheck.cache.isAdmin);
           setOfflineDaysRemaining(localCheck.daysRemaining);
-          setAuthorized(true);
-          wasAuthorizedRef.current = true;
+          const lockRes = await resolveLockForUser({
+            uid: localCheck.cache.uid,
+            isAdmin: localCheck.cache.isAdmin,
+            preferredMode: localCheck.cache.passwordMode,
+            preferredHash: localCheck.cache.appPasswordHash,
+          });
+          setPasswordMode(lockRes.mode);
+          setAppPasswordHash(lockRes.hash);
+          if (lockRes.gate) {
+            setAuthorized(false);
+            setGateReason(lockRes.gate);
+            if (wasAuthorizedRef.current) window.location.reload();
+          } else {
+            setAuthorized(true);
+            wasAuthorizedRef.current = true;
+          }
           return;
         }
         setAuthorized(false);
         setIsAdmin(false);
         setAccessDoc(null);
-        setGateReason(localCheck.expired30Days && !navigator.onLine ? 'offline_30d_expired' : 'unauthenticated');
+        setCachedLicense(null);
+        setGateReason(
+          localCheck.expiredLicense
+            ? 'expired'
+            : localCheck.expired30Days && !navigator.onLine
+            ? 'offline_30d_expired'
+            : 'unauthenticated'
+        );
         if (wasAuthorizedRef.current) {
           window.location.reload();
         }
@@ -2072,7 +2542,11 @@ export default function App() {
       }
 
       if (isOwnerAdminUser(user)) {
-        await saveLocalLicenseCache({
+        const lockRes = await resolveLockForUser({
+          uid: user.uid,
+          isAdmin: true,
+        });
+        const saved = await saveLocalLicenseCache({
           uid: user.uid,
           email: user.email || '',
           fullName: user.displayName || 'เจ้าของระบบ',
@@ -2083,16 +2557,28 @@ export default function App() {
           approvedDeviceLabels: deviceLabel,
           maxDevices: 99,
           expiresAt: '',
+          passwordMode: lockRes.mode,
+          appPasswordHash: lockRes.hash,
         });
+        setCachedLicense(saved);
         setIsAdmin(true);
         setOfflineDaysRemaining(OFFLINE_GRACE_DAYS);
-        setAuthorized(true);
-        wasAuthorizedRef.current = true;
+        setPasswordMode(lockRes.mode);
+        setAppPasswordHash(lockRes.hash);
+        if (lockRes.gate) {
+          setAuthorized(false);
+          setGateReason(lockRes.gate);
+          if (wasAuthorizedRef.current) window.location.reload();
+        } else {
+          setAuthorized(true);
+          wasAuthorizedRef.current = true;
+        }
         return;
       }
 
       if (!user.emailVerified) {
         await clearLocalLicenseCache();
+        setCachedLicense(null);
         setIsAdmin(false);
         setAuthorized(false);
         setGateReason('unverified_email');
@@ -2104,10 +2590,24 @@ export default function App() {
 
       const localCheck = await verifyLocalLicenseCache(deviceId, user);
       if (localCheck.valid && localCheck.cache && !silent) {
+        setCachedLicense(localCheck.cache);
         setIsAdmin(false);
         setOfflineDaysRemaining(localCheck.daysRemaining);
-        setAuthorized(true);
-        wasAuthorizedRef.current = true;
+        const lockRes = await resolveLockForUser({
+          uid: localCheck.cache.uid,
+          isAdmin: false,
+          preferredMode: localCheck.cache.passwordMode,
+          preferredHash: localCheck.cache.appPasswordHash,
+        });
+        setPasswordMode(lockRes.mode);
+        setAppPasswordHash(lockRes.hash);
+        if (lockRes.gate) {
+          setAuthorized(false);
+          setGateReason(lockRes.gate);
+        } else {
+          setAuthorized(true);
+          wasAuthorizedRef.current = true;
+        }
       }
 
       try {
@@ -2116,6 +2616,7 @@ export default function App() {
 
         if (!docData) {
           await clearLocalLicenseCache();
+          setCachedLicense(null);
           setAuthorized(false);
           setGateReason('needs_registration');
           if (wasAuthorizedRef.current) window.location.reload();
@@ -2124,6 +2625,7 @@ export default function App() {
 
         if (docData.status === 'pending') {
           await clearLocalLicenseCache();
+          setCachedLicense(null);
           setAuthorized(false);
           setGateReason('pending');
           if (wasAuthorizedRef.current) window.location.reload();
@@ -2132,6 +2634,7 @@ export default function App() {
 
         if (docData.status === 'rejected') {
           await clearLocalLicenseCache();
+          setCachedLicense(null);
           setAuthorized(false);
           setGateReason('rejected');
           if (wasAuthorizedRef.current) window.location.reload();
@@ -2140,6 +2643,7 @@ export default function App() {
 
         if (docData.status === 'revoked') {
           await clearLocalLicenseCache();
+          setCachedLicense(null);
           setAuthorized(false);
           setGateReason('revoked');
           if (wasAuthorizedRef.current) window.location.reload();
@@ -2149,6 +2653,7 @@ export default function App() {
         if (docData.status === 'approved') {
           if (isLicenseDateExpired(docData.expiresAt)) {
             await clearLocalLicenseCache();
+            setCachedLicense(null);
             setAuthorized(false);
             setGateReason('expired');
             if (wasAuthorizedRef.current) window.location.reload();
@@ -2158,7 +2663,13 @@ export default function App() {
           const bound = docData.approvedDeviceIds || [];
           const maxDev = docData.maxDevices || DEFAULT_MAX_DEVICES;
           if (bound.includes(deviceId)) {
-            await saveLocalLicenseCache({
+            const lockRes = await resolveLockForUser({
+              uid: docData.uid,
+              isAdmin: false,
+              preferredMode: docData.passwordMode,
+              preferredHash: docData.appPasswordHash,
+            });
+            const saved = await saveLocalLicenseCache({
               uid: docData.uid,
               email: docData.email,
               fullName: docData.fullName,
@@ -2169,14 +2680,26 @@ export default function App() {
               approvedDeviceLabels: docData.approvedDeviceLabels || '',
               maxDevices: maxDev,
               expiresAt: docData.expiresAt || '',
+              passwordMode: lockRes.mode,
+              appPasswordHash: lockRes.hash,
             });
+            setCachedLicense(saved);
             setOfflineDaysRemaining(OFFLINE_GRACE_DAYS);
-            setAuthorized(true);
-            wasAuthorizedRef.current = true;
+            setPasswordMode(lockRes.mode);
+            setAppPasswordHash(lockRes.hash);
+            if (lockRes.gate) {
+              setAuthorized(false);
+              setGateReason(lockRes.gate);
+              if (wasAuthorizedRef.current) window.location.reload();
+            } else {
+              setAuthorized(true);
+              wasAuthorizedRef.current = true;
+            }
             return;
           }
 
           await clearLocalLicenseCache();
+          setCachedLicense(null);
           setAuthorized(false);
           setGateReason(bound.length >= maxDev ? 'device_limit_reached' : 'device_unbound');
           if (wasAuthorizedRef.current) window.location.reload();
@@ -2185,11 +2708,27 @@ export default function App() {
       } catch (err) {
         if (isOfflineError(err)) {
           if (localCheck.valid && localCheck.cache) {
+            setCachedLicense(localCheck.cache);
             setOfflineDaysRemaining(localCheck.daysRemaining);
-            setAuthorized(true);
-            wasAuthorizedRef.current = true;
+            const lockRes = await resolveLockForUser({
+              uid: localCheck.cache.uid,
+              isAdmin: localCheck.cache.isAdmin,
+              preferredMode: localCheck.cache.passwordMode,
+              preferredHash: localCheck.cache.appPasswordHash,
+            });
+            setPasswordMode(lockRes.mode);
+            setAppPasswordHash(lockRes.hash);
+            if (lockRes.gate) {
+              setAuthorized(false);
+              setGateReason(lockRes.gate);
+              if (wasAuthorizedRef.current) window.location.reload();
+            } else {
+              setAuthorized(true);
+              wasAuthorizedRef.current = true;
+            }
             return;
           }
+          setCachedLicense(null);
           setAuthorized(false);
           if (localCheck.expiredLicense) setGateReason('expired');
           else if (localCheck.expired30Days) setGateReason('offline_30d_expired');
@@ -2201,6 +2740,7 @@ export default function App() {
           setErrorMsg(err instanceof Error ? err.message : 'ไม่สามารถตรวจสอบสิทธิ์ได้');
         }
         if (!localCheck.valid) {
+          setCachedLicense(null);
           setAuthorized(false);
           setGateReason('needs_registration');
         }
@@ -2228,8 +2768,14 @@ export default function App() {
   }, [authorized, evaluateAccess]);
 
   useEffect(() => {
-    if (!authorized || !isAdmin) {
+    if (!authorized || !isAdmin || !user) {
       setAdminRequests([]);
+      setAdminLoading(false);
+      if (authorized && isAdmin && !user) {
+        setAdminError('กรุณากด "ตรวจสอบสิทธิ์ล่าสุดตอนนี้" หรือเข้าสู่ระบบ Google อีกครั้งเพื่อจัดการคำขอสิทธิ์ออนไลน์');
+      } else {
+        setAdminError('');
+      }
       return;
     }
     setAdminLoading(true);
@@ -2245,11 +2791,13 @@ export default function App() {
       }
     );
     return unsub;
-  }, [authorized, isAdmin]);
+  }, [authorized, isAdmin, user]);
 
   const pendingAdminCount = adminRequests.filter(
     (r) => r.status === 'pending' || Boolean(r.pendingDeviceId)
   ).length;
+
+  const activeUid = user?.uid || cachedLicense?.uid || accessDoc?.uid || '';
 
   const handleSignIn = async () => {
     setBusy(true);
@@ -2271,8 +2819,11 @@ export default function App() {
     setErrorMsg('');
     try {
       await signOutFromAccess();
+      setCachedLicense(null);
       setAuthorized(false);
       setIsAdmin(false);
+      setPasswordMode('unset');
+      setAppPasswordHash('');
       setAccessDoc(null);
       setGateReason('unauthenticated');
       if (wasAuthorizedRef.current) {
@@ -2312,11 +2863,227 @@ export default function App() {
     }
   };
 
+  const handleChooseNoPassword = async () => {
+    if (!activeUid) return;
+    setBusy(true);
+    setErrorMsg('');
+    try {
+      const savedLock = await updateUserAppPasswordSetting({
+        uid: activeUid,
+        isAdmin,
+        mode: 'none',
+      });
+      setPasswordMode(savedLock.passwordMode);
+      setAppPasswordHash(savedLock.appPasswordHash);
+      setAccessDoc((prev) =>
+        prev ? { ...prev, passwordMode: 'none', appPasswordHash: '' } : prev
+      );
+      setCachedLicense((prev) =>
+        prev ? { ...prev, passwordMode: 'none', appPasswordHash: '' } : prev
+      );
+      setAuthorized(true);
+      wasAuthorizedRef.current = true;
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'บันทึกการตั้งค่าไม่สำเร็จ');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleSetInitialPassword = async (password: string) => {
+    if (!activeUid) return;
+    setBusy(true);
+    setErrorMsg('');
+    try {
+      const savedLock = await updateUserAppPasswordSetting({
+        uid: activeUid,
+        isAdmin,
+        mode: 'password',
+        newPassword: password,
+      });
+      setPasswordMode(savedLock.passwordMode);
+      setAppPasswordHash(savedLock.appPasswordHash);
+      setAccessDoc((prev) =>
+        prev
+          ? {
+              ...prev,
+              passwordMode: 'password',
+              appPasswordHash: savedLock.appPasswordHash,
+            }
+          : prev
+      );
+      setCachedLicense((prev) =>
+        prev
+          ? {
+              ...prev,
+              passwordMode: 'password',
+              appPasswordHash: savedLock.appPasswordHash,
+            }
+          : prev
+      );
+      setAuthorized(true);
+      wasAuthorizedRef.current = true;
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'บันทึกรหัสผ่านไม่สำเร็จ');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleUnlockWithPassword = async (password: string): Promise<boolean> => {
+    if (!activeUid) return false;
+    setBusy(true);
+    setErrorMsg('');
+    try {
+      let hashToCheck = appPasswordHash;
+      if (!hashToCheck) {
+        const localLock = await getLocalUserLock(activeUid);
+        hashToCheck = localLock.appPasswordHash;
+      }
+      if (!hashToCheck && cachedLicense?.appPasswordHash) {
+        hashToCheck = cachedLicense.appPasswordHash;
+      }
+      const ok = await verifyAppPassword(activeUid, password, hashToCheck);
+      if (!ok) return false;
+      markSessionUnlocked(activeUid);
+      setAuthorized(true);
+      wasAuthorizedRef.current = true;
+      return true;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleResetForgottenPassword = async () => {
+    if (!navigator.onLine) {
+      setErrorMsg('กรุณาเชื่อมต่ออินเทอร์เน็ตเพื่อยืนยันบัญชี Google ก่อนตั้งรหัสผ่านใหม่');
+      return;
+    }
+    setBusy(true);
+    setErrorMsg('');
+    try {
+      const signedUser = await signInWithGoogleForAccess();
+      const targetUid = activeUid || signedUser.uid;
+      if (signedUser.uid !== targetUid) {
+        // Switched to another Google account; evaluateAccess will handle it automatically
+        return;
+      }
+      const adminFlag = isOwnerAdminUser(signedUser);
+      await updateUserAppPasswordSetting({
+        uid: targetUid,
+        isAdmin: adminFlag,
+        mode: adminFlag ? 'none' : 'unset',
+      });
+      setPasswordMode(adminFlag ? 'none' : 'unset');
+      setAppPasswordHash('');
+      setAccessDoc((prev) =>
+        prev ? { ...prev, passwordMode: adminFlag ? 'none' : 'unset', appPasswordHash: '' } : prev
+      );
+      setCachedLicense((prev) =>
+        prev ? { ...prev, passwordMode: adminFlag ? 'none' : 'unset', appPasswordHash: '' } : prev
+      );
+      if (adminFlag) {
+        setAuthorized(true);
+        wasAuthorizedRef.current = true;
+      } else {
+        setGateReason('password_setup');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'ยืนยันตัวตนไม่สำเร็จ';
+      if (!msg.includes('popup-closed-by-user')) {
+        setErrorMsg(msg);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleSetOrChangePasswordInSettings = async (
+    oldPassword: string | null,
+    newPassword: string
+  ) => {
+    if (!activeUid) throw new Error('ไม่พบข้อมูลบัญชีผู้ใช้งาน');
+    if (passwordMode === 'password') {
+      let hashToCheck = appPasswordHash;
+      if (!hashToCheck) {
+        const localLock = await getLocalUserLock(activeUid);
+        hashToCheck = localLock.appPasswordHash;
+      }
+      const ok = await verifyAppPassword(activeUid, oldPassword || '', hashToCheck);
+      if (!ok) {
+        throw new Error('รหัสผ่านเดิมไม่ถูกต้อง');
+      }
+    }
+    const savedLock = await updateUserAppPasswordSetting({
+      uid: activeUid,
+      isAdmin,
+      mode: 'password',
+      newPassword,
+    });
+    setPasswordMode(savedLock.passwordMode);
+    setAppPasswordHash(savedLock.appPasswordHash);
+    setAccessDoc((prev) =>
+      prev
+        ? { ...prev, passwordMode: 'password', appPasswordHash: savedLock.appPasswordHash }
+        : prev
+    );
+    setCachedLicense((prev) =>
+      prev
+        ? { ...prev, passwordMode: 'password', appPasswordHash: savedLock.appPasswordHash }
+        : prev
+    );
+  };
+
+  const handleRemovePasswordInSettings = async (oldPassword: string) => {
+    if (!activeUid) throw new Error('ไม่พบข้อมูลบัญชีผู้ใช้งาน');
+    if (passwordMode === 'password') {
+      let hashToCheck = appPasswordHash;
+      if (!hashToCheck) {
+        const localLock = await getLocalUserLock(activeUid);
+        hashToCheck = localLock.appPasswordHash;
+      }
+      const ok = await verifyAppPassword(activeUid, oldPassword, hashToCheck);
+      if (!ok) {
+        throw new Error('รหัสผ่านเดิมไม่ถูกต้อง');
+      }
+    }
+    const savedLock = await updateUserAppPasswordSetting({
+      uid: activeUid,
+      isAdmin,
+      mode: 'none',
+    });
+    setPasswordMode(savedLock.passwordMode);
+    setAppPasswordHash('');
+    setAccessDoc((prev) =>
+      prev ? { ...prev, passwordMode: 'none', appPasswordHash: '' } : prev
+    );
+    setCachedLicense((prev) =>
+      prev ? { ...prev, passwordMode: 'none', appPasswordHash: '' } : prev
+    );
+  };
+
+  const handleLockNow = () => {
+    clearSessionUnlocked();
+    window.location.reload();
+  };
+
   if (!authorized) {
+    const resolvedReason: GateReason =
+      !deviceId || (!authReady && gateReason === 'loading') ? 'loading' : gateReason;
     return (
       <AccessGate
-        reason={!authReady || !deviceId ? 'loading' : gateReason}
+        reason={resolvedReason}
         user={user}
+        cachedAccount={
+          cachedLicense
+            ? {
+                uid: cachedLicense.uid,
+                email: cachedLicense.email,
+                fullName: cachedLicense.fullName,
+                orgName: cachedLicense.orgName,
+              }
+            : null
+        }
         deviceId={deviceId}
         deviceLabel={deviceLabel}
         accessDoc={accessDoc}
@@ -2327,6 +3094,10 @@ export default function App() {
         onRefreshStatus={() => evaluateAccess(false)}
         onSubmitRegistration={handleSubmitRegistration}
         onRequestDeviceBind={handleRequestDeviceBind}
+        onChooseNoPassword={handleChooseNoPassword}
+        onSetInitialPassword={handleSetInitialPassword}
+        onUnlockWithPassword={handleUnlockWithPassword}
+        onResetForgottenPassword={handleResetForgottenPassword}
       />
     );
   }
@@ -2335,19 +3106,27 @@ export default function App() {
     <>
       <KumWatsaduWorkspace
         user={user}
+        cachedLicense={cachedLicense}
         isAdmin={isAdmin}
         deviceId={deviceId}
         deviceLabel={deviceLabel}
         offlineDaysRemaining={offlineDaysRemaining}
         accessDoc={accessDoc}
         pendingAdminCount={pendingAdminCount}
+        passwordMode={passwordMode}
         onOpenAdmin={() => setAdminModalOpen(true)}
         onRecheckAccess={async () => {
+          if (!user && navigator.onLine) {
+            await handleSignIn();
+          }
           await evaluateAccess(false);
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (window as any).toast?.('ตรวจสอบสิทธิ์ล่าสุดกับฐานข้อมูลกลางเรียบร้อยแล้ว');
         }}
         onSignOutAccess={handleSignOut}
+        onSetOrChangePassword={handleSetOrChangePasswordInSettings}
+        onRemovePassword={handleRemovePasswordInSettings}
+        onLockNow={handleLockNow}
       />
       {isAdmin && (
         <AdminAccessModal

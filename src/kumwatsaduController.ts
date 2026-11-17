@@ -182,10 +182,22 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     refreshCntFy();
   }
 
+  const ACTIVE_TAB_KEY = 'kumwatsadu-active-tab-v1';
+  const STOCK_SUBTAB_KEY = 'kumwatsadu-stock-subtab-v1';
+  const REP_KIND_KEY = 'kumwatsadu-report-kind-v1';
+
   let L = new Map<string, any[]>();
   let editMat: string | null = null;
   let armed: string | null = null;
-  let repKind = 'sum';
+  let repKind = (() => {
+    try {
+      const saved = localStorage.getItem(REP_KIND_KEY);
+      if (saved && ['sum', 'card', 'req', 'vs'].includes(saved)) return saved;
+    } catch {
+      // ignore
+    }
+    return 'sum';
+  })();
   let restoreData: any = null;
 
   let toastTimer: any = null;
@@ -492,11 +504,17 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       title: 'ตรวจนับวัสดุประจำปี',
       sub: 'บันทึกผลการตรวจนับคงเหลือสิ้นปีงบประมาณและพิมพ์รายงานคณะกรรมการตรวจนับ',
     },
+    org: {
+      en: 'ORGANIZATION & SIGNATORIES',
+      crumb: 'ตั้งค่าข้อมูลหน่วยงาน',
+      title: 'ตั้งค่าข้อมูลหน่วยงานและผู้ลงนาม',
+      sub: 'กำหนดสังกัด ชื่อหน่วยงาน โลโก้ และข้อมูลผู้ลงนามบนใบเบิกและรายงานประจำปี',
+    },
     set: {
       en: 'SYSTEM SETTINGS & BACKUP',
-      crumb: 'ตั้งค่า / สำรองข้อมูล',
-      title: 'ตั้งค่าระบบและสำรองข้อมูล',
-      sub: 'กำหนดชื่อหน่วยงาน ผู้ลงนาม สีของระบบ และจัดการไฟล์สำรองข้อมูลในเครื่อง',
+      crumb: 'ตั้งค่า / สำรองข้อมูลระบบ',
+      title: 'ตั้งค่า / สำรองข้อมูลระบบ',
+      sub: 'จัดการไฟล์สำรองข้อมูล การสำรองลงโฟลเดอร์ Google Drive สิทธิ์การใช้งาน และรหัสผ่านเข้าระบบ',
     },
     install: {
       en: 'DESKTOP APP INSTALLATION',
@@ -508,8 +526,13 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
 
   function showTab(t: string) {
     if (!TAB_META[t]) t = 'stock';
+    try {
+      localStorage.setItem(ACTIVE_TAB_KEY, t);
+    } catch {
+      // ignore
+    }
     document.querySelectorAll('nav.tabs button').forEach((b: any) => b.setAttribute('aria-selected', String(b.dataset.tab === t)));
-    ['stock', 'in', 'out', 'mat', 'report', 'cnt', 'set', 'install'].forEach((k) => {
+    ['stock', 'in', 'out', 'mat', 'report', 'cnt', 'org', 'set', 'install'].forEach((k) => {
       const el = $('view-' + k);
       if (el) el.hidden = k !== t;
     });
@@ -533,6 +556,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       mat: renderMat,
       report: renderReport,
       cnt: renderCount,
+      org: renderSet,
       set: renderSet,
       install: () => {},
     };
@@ -808,9 +832,20 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     }
   });
 
-  let stockSubTab: 'dash' | 'list' = 'dash';
+  let stockSubTab: 'dash' | 'list' = (() => {
+    try {
+      return localStorage.getItem(STOCK_SUBTAB_KEY) === 'list' ? 'list' : 'dash';
+    } catch {
+      return 'dash';
+    }
+  })();
   function setStockSubTab(tab: 'dash' | 'list') {
     stockSubTab = tab;
+    try {
+      localStorage.setItem(STOCK_SUBTAB_KEY, tab);
+    } catch {
+      // ignore
+    }
     const isList = tab === 'list';
     document.querySelectorAll('[data-st]').forEach((b: any) => {
       const active = b.dataset.st === tab;
@@ -4619,6 +4654,11 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
   document.querySelectorAll('[data-rk]').forEach((b: any) =>
     b.addEventListener('click', () => {
       repKind = b.dataset.rk;
+      try {
+        localStorage.setItem(REP_KIND_KEY, repKind);
+      } catch {
+        // ignore
+      }
       setRepSeg();
       renderReport();
     })
@@ -5452,6 +5492,15 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
 
   resetMat(null);
   setRepSeg();
+  setStockSubTab(stockSubTab);
+  try {
+    const savedTab = localStorage.getItem(ACTIVE_TAB_KEY);
+    if (savedTab && TAB_META[savedTab]) {
+      showTab(savedTab);
+    }
+  } catch {
+    // ignore
+  }
   renderAll();
 
   let isRestoringSnapshot = false;
@@ -5708,7 +5757,9 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
         localDb.meta('autoBackupAt', expIso);
         lastSig = sig();
         ui();
-        toast(`เชื่อมต่อโฟลเดอร์ “${dir?.name || ''}” แล้ว (ข้อมูลตรงกับไฟล์สำรองล่าสุด)`);
+        if (mode !== 'init') {
+          toast(`เชื่อมต่อโฟลเดอร์ “${dir?.name || ''}” แล้ว (ข้อมูลตรงกับไฟล์สำรองล่าสุด)`);
+        }
         return 'restored';
       }
 
@@ -5718,7 +5769,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
           source: 'folder',
         });
         toast(
-          `ดึงข้อมูลที่เคยสำรองไว้จากโฟลเดอร์ “${found.fileName}” เข้าสู่ระบบอัตโนมัติแล้ว (${found.data.materials.length} วัสดุ, ${found.data.moves.length} เอกสาร)`
+          `ดึงข้อมูลล่าสุดจากโฟลเดอร์ “${found.fileName}” มาอัปเดตแล้ว (${found.data.materials.length} วัสดุ, ${found.data.moves.length} เอกสาร)`
         );
         return 'restored';
       }
@@ -5806,15 +5857,27 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       } catch {
         dir = null;
       }
+      let canReadOnInit = false;
       if (dir) {
         const p = await perm(false);
         state = p === 'granted' ? 'on' : 'ask';
+        if (p === 'granted') {
+          canReadOnInit = true;
+        } else {
+          try {
+            canReadOnInit =
+              typeof dir.queryPermission === 'function' &&
+              (await dir.queryPermission({ mode: 'read' })) === 'granted';
+          } catch {
+            canReadOnInit = false;
+          }
+        }
       }
       ui();
+      if (canReadOnInit) {
+        await tryAutoRestoreFromDir('init');
+      }
       if (state === 'on') {
-        if (!materials.length && !moves.length) {
-          await tryAutoRestoreFromDir('init');
-        }
         changed();
       }
     }
@@ -6098,7 +6161,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     });
     db.doc('settings/main').onSnapshot((s: any) => {
       applySet(s.exists ? s.data() : null);
-      if (curTab() === 'set') renderSet();
+      if (curTab() === 'set' || curTab() === 'org') renderSet();
     });
     db.collection('counts').onSnapshot((s: any) => {
       counts = {};

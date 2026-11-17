@@ -6,8 +6,42 @@ import {
   Sparkles,
   FolderCheck,
   Trash2,
+  Download,
+  Info,
 } from 'lucide-react';
 import { usePWAInstall, useOnlineStatus } from './usePWAInstall';
+
+export const TopbarPWAInstallButton: React.FC<{ onOpenInstallTab?: () => void }> = ({
+  onOpenInstallTab,
+}) => {
+  const { isInstallable, isInstalled, install } = usePWAInstall();
+
+  if (isInstalled || !isInstallable) {
+    return null;
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        void install().then((ok) => {
+          if (!ok) onOpenInstallTab?.();
+        });
+      }}
+      className="storage-pill"
+      style={{
+        background: 'var(--ink-soft)',
+        color: 'var(--ink)',
+        borderColor: 'var(--line-strong)',
+        fontWeight: 600,
+      }}
+      title="ติดตั้งระบบคุมวัสดุเป็นโปรแกรมบนเครื่องคอมพิวเตอร์ (PWA Desktop App)"
+    >
+      <Download className="h-3.5 w-3.5" />
+      <span>ติดตั้งแอป</span>
+    </button>
+  );
+};
 
 interface InstallAndPortableProps {
   onLoadSampleData?: () => void;
@@ -20,9 +54,21 @@ export const InstallAndPortableSection: React.FC<InstallAndPortableProps> = ({
   onClearSampleData,
   hasMaterials,
 }) => {
-  const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
+  const { isInstallable, isInstalled, isIOS, isInIframe, install } = usePWAInstall();
   const isOnline = useOnlineStatus();
   const [confirmClear, setConfirmClear] = useState<boolean>(false);
+  const [manualTipOpen, setManualTipOpen] = useState<boolean>(false);
+
+  const handleInstallClick = async () => {
+    if (isInstallable) {
+      const accepted = await install();
+      if (!accepted) {
+        setManualTipOpen(true);
+      }
+      return;
+    }
+    setManualTipOpen(true);
+  };
 
   return (
     <div className="stack">
@@ -70,22 +116,59 @@ export const InstallAndPortableSection: React.FC<InstallAndPortableProps> = ({
           )}
         </div>
 
-        {isInstallable && !isInstalled && (
+        {!isInstalled && (
           <div className="mb-4 rounded-xl border border-[var(--line-strong)] bg-[var(--ink-soft)] p-4">
             <div className="font-semibold text-[var(--fg)]" style={{ fontFamily: 'var(--f-display)' }}>
-              เบราว์เซอร์ของคุณรองรับการติดตั้งลงเครื่องโดยตรง
+              {isInstallable
+                ? 'เบราว์เซอร์ของคุณรองรับการติดตั้งลงเครื่องโดยตรง'
+                : 'ติดตั้งระบบคุมวัสดุเป็นโปรแกรมบนเครื่อง (PWA Desktop App)'}
             </div>
             <p className="mt-1 mb-3 text-sm text-[var(--muted)]">
-              กดปุ่มด้านล่างเพื่อติดตั้ง “ระบบคุมวัสดุ” ลงในเครื่องคอมพิวเตอร์ของคุณทันที:
+              {isInstallable
+                ? 'กดปุ่มด้านล่างเพื่อติดตั้ง “ระบบคุมวัสดุ” ลงในเครื่องคอมพิวเตอร์ของคุณทันที:'
+                : 'กดปุ่มด้านล่างเพื่อเรียกหน้าต่างติดตั้งแอป หรือดูวิธีติดตั้งผ่านแถบเครื่องมือของเบราว์เซอร์:'}
             </p>
-            <button
-              type="button"
-              onClick={() => install()}
-              className="btn primary flex items-center gap-2"
-            >
-              <Monitor className="h-4 w-4" />
-              <span>ติดตั้งโปรแกรมลงเครื่องทันที</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void handleInstallClick()}
+                className="btn primary flex items-center gap-2"
+              >
+                <Monitor className="h-4 w-4" />
+                <span>
+                  {isInstallable
+                    ? 'ติดตั้งโปรแกรมลงเครื่องทันที'
+                    : 'ติดตั้ง PWA Desktop App'}
+                </span>
+              </button>
+            </div>
+
+            {manualTipOpen && !isInstallable && (
+              <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                <div>
+                  {isIOS ? (
+                    <span>
+                      บน iPhone / iPad (Safari): แตะปุ่ม <strong>แชร์ (Share)</strong> ด้านล่าง แล้วเลือก{' '}
+                      <strong>“เพิ่มไปยังหน้าจอโฮม” (Add to Home Screen)</strong>
+                    </span>
+                  ) : isInIframe ? (
+                    <span>
+                      ขณะนี้เว็บกำลังเปิดอยู่ในกรอบพรีวิว (iframe) เบราว์เซอร์จึงไม่อนุญาตให้เด้งหน้าต่างติดตั้งอัตโนมัติ
+                      กรุณาเปิด URL เว็บแอปโดยตรงใน <strong>Google Chrome</strong> หรือ <strong>Microsoft Edge</strong>{' '}
+                      แล้วกดปุ่มนี้อีกครั้ง หรือคลิกไอคอนติดตั้งที่ด้านขวาของช่องใส่ URL
+                    </span>
+                  ) : (
+                    <span>
+                      เบราว์เซอร์ยังไม่ส่งคำสั่งเด้งหน้าต่างติดตั้งอัตโนมัติ (อาจเคยกดปิดไว้ก่อนหน้า หรือติดตั้งไว้แล้ว):
+                      ให้คลิกไอคอนรูปหน้าจอคอมพิวเตอร์ <strong>“ติดตั้ง”</strong> ที่ด้านขวาของช่องใส่ URL ด้านบน
+                      หรือไปที่เมนู <code>⋮</code> มุมขวาบน &rarr; <strong>บันทึกและแชร์ / แอป</strong> &rarr;{' '}
+                      <strong>ติดตั้งหน้านี้เป็นแอป</strong>
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -104,7 +187,7 @@ export const InstallAndPortableSection: React.FC<InstallAndPortableProps> = ({
                 เปิดหน้านี้ในเบราว์เซอร์ <strong>Google Chrome</strong> หรือ <strong>Microsoft Edge</strong>
               </li>
               <li>
-                คลิกปุ่ม <strong>“ติดตั้งโปรแกรมลงเครื่องทันที”</strong> ด้านบน หรือคลิกไอคอนรูปหน้าจอคอมพิวเตอร์{' '}
+                คลิกปุ่ม <strong>“ติดตั้งโปรแกรมลงเครื่องทันที / PWA Desktop App”</strong> ด้านบน หรือคลิกไอคอนรูปหน้าจอคอมพิวเตอร์{' '}
                 <strong>“ติดตั้ง ระบบคุมวัสดุ”</strong> ที่ด้านขวาของช่องใส่ URL ด้านบน
               </li>
               <li>

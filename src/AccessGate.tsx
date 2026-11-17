@@ -14,6 +14,10 @@ import {
   Check,
   Send,
   WifiOff,
+  KeyRound,
+  Eye,
+  EyeOff,
+  Shield,
 } from 'lucide-react';
 import {
   AccessRequestDoc,
@@ -35,11 +39,21 @@ export type GateReason =
   | 'device_unbound'
   | 'device_limit_reached'
   | 'offline_30d_expired'
-  | 'offline_no_cache';
+  | 'offline_no_cache'
+  | 'password_setup'
+  | 'password_unlock';
+
+export interface CachedAccountInfo {
+  uid: string;
+  email: string;
+  fullName: string;
+  orgName?: string;
+}
 
 interface AccessGateProps {
   reason: GateReason;
   user: User | null;
+  cachedAccount?: CachedAccountInfo | null;
   deviceId: string;
   deviceLabel: string;
   accessDoc: AccessRequestDoc | null;
@@ -50,11 +64,16 @@ interface AccessGateProps {
   onRefreshStatus: () => Promise<void>;
   onSubmitRegistration: (form: AccessRegistrationForm) => Promise<void>;
   onRequestDeviceBind: (note: string) => Promise<void>;
+  onChooseNoPassword?: () => Promise<void>;
+  onSetInitialPassword?: (password: string) => Promise<void>;
+  onUnlockWithPassword?: (password: string) => Promise<boolean>;
+  onResetForgottenPassword?: () => Promise<void>;
 }
 
 export const AccessGate: React.FC<AccessGateProps> = ({
   reason,
   user,
+  cachedAccount,
   deviceId,
   deviceLabel,
   accessDoc,
@@ -65,6 +84,10 @@ export const AccessGate: React.FC<AccessGateProps> = ({
   onRefreshStatus,
   onSubmitRegistration,
   onRequestDeviceBind,
+  onChooseNoPassword,
+  onSetInitialPassword,
+  onUnlockWithPassword,
+  onResetForgottenPassword,
 }) => {
   const [fullName, setFullName] = useState<string>(() => accessDoc?.fullName || user?.displayName || '');
   const [orgName, setOrgName] = useState<string>(() => accessDoc?.orgName || '');
@@ -75,10 +98,22 @@ export const AccessGate: React.FC<AccessGateProps> = ({
   const [deviceNote, setDeviceNote] = useState<string>('');
   const [copiedInfo, setCopiedInfo] = useState<boolean>(false);
 
+  const [setupChoice, setSetupChoice] = useState<'password' | 'none'>('password');
+  const [newPassword, setNewPassword] = useState<string>('');
+  const [confirmPassword, setConfirmPassword] = useState<string>('');
+  const [showNewPw, setShowNewPw] = useState<boolean>(false);
+  const [unlockPassword, setUnlockPassword] = useState<string>('');
+  const [showUnlockPw, setShowUnlockPw] = useState<boolean>(false);
+  const [localPwErr, setLocalPwErr] = useState<string>('');
+
   const boundIds = accessDoc?.approvedDeviceIds || [];
   const boundLabels = parseDeviceLabels(accessDoc?.approvedDeviceLabels || '');
   const maxDevices = accessDoc?.maxDevices || 2;
   const isThisDevicePending = Boolean(accessDoc?.pendingDeviceId && accessDoc.pendingDeviceId === deviceId);
+
+  const accountName = user?.displayName || accessDoc?.fullName || cachedAccount?.fullName || 'ผู้ใช้งานระบบ';
+  const accountEmail = user?.email || accessDoc?.email || cachedAccount?.email || '';
+  const hasAccountInfo = Boolean(user || cachedAccount || accessDoc);
 
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,6 +125,39 @@ export const AccessGate: React.FC<AccessGateProps> = ({
       note,
     });
     setEditingPending(false);
+  };
+
+  const handlePasswordSetupSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLocalPwErr('');
+    if (setupChoice === 'none') {
+      await onChooseNoPassword?.();
+      return;
+    }
+    if (newPassword.length < 4) {
+      setLocalPwErr('กรุณากำหนดรหัสผ่านอย่างน้อย 4 ตัวอักษร');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setLocalPwErr('รหัสผ่านและยืนยันรหัสผ่านไม่ตรงกัน');
+      return;
+    }
+    await onSetInitialPassword?.(newPassword);
+  };
+
+  const handlePasswordUnlockSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLocalPwErr('');
+    if (!unlockPassword) {
+      setLocalPwErr('กรุณากรอกรหัสผ่าน');
+      return;
+    }
+    const ok = await onUnlockWithPassword?.(unlockPassword);
+    if (ok === false) {
+      setLocalPwErr('รหัสผ่านไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง');
+    } else {
+      setUnlockPassword('');
+    }
   };
 
   const handleCopySummary = async () => {
@@ -219,18 +287,18 @@ export const AccessGate: React.FC<AccessGateProps> = ({
           </div>
         )}
 
-        {user && (
+        {hasAccountInfo && reason !== 'unauthenticated' && (
           <div className="access-account-bar">
             <div className="access-account-info">
-              <div className="access-account-avatar">{(user.displayName || user.email || 'U').charAt(0).toUpperCase()}</div>
+              <div className="access-account-avatar">{accountName.charAt(0).toUpperCase()}</div>
               <div>
-                <div className="access-account-name">{user.displayName || 'ผู้ใช้งาน Google'}</div>
-                <div className="access-account-email">{user.email}</div>
+                <div className="access-account-name">{accountName}</div>
+                {accountEmail ? <div className="access-account-email">{accountEmail}</div> : null}
               </div>
             </div>
             <button type="button" className="btn-ghost-sm" onClick={() => void onSignOut()} disabled={busy}>
               <LogOut className="h-3.5 w-3.5" />
-              <span>เปลี่ยนบัญชี</span>
+              <span>ออกจากระบบ / เปลี่ยนบัญชี</span>
             </button>
           </div>
         )}
@@ -518,6 +586,194 @@ export const AccessGate: React.FC<AccessGateProps> = ({
               </button>
             </div>
           </div>
+        )}
+
+        {reason === 'password_setup' && (
+          <form className="access-gate-form" onSubmit={(e) => void handlePasswordSetupSubmit(e)}>
+            <div className="access-status-card is-ok">
+              <div className="access-status-head">
+                <CheckCircle2 className="h-5 w-5 text-emerald-700" />
+                <strong>บัญชีของคุณได้รับอนุมัติเข้าใช้งานแล้ว — เลือกรูปแบบการเข้าระบบ</strong>
+              </div>
+              <div className="access-status-details">
+                <div>
+                  เลือกได้ว่าต้องการ <strong>ตั้งรหัสผ่านส่วนตัว</strong> ก่อนเข้าใช้งาน หรือ{' '}
+                  <strong>เข้าใช้งานแบบไม่กำหนดรหัสผ่าน</strong> (สามารถตั้งเพิ่มหรือเอารหัสออกได้ภายหลังในหน้า ตั้งค่า)
+                </div>
+              </div>
+            </div>
+
+            <div className="access-choice-grid" role="radiogroup" aria-label="เลือกรูปแบบการเข้าระบบ">
+              <button
+                type="button"
+                className={`access-choice-card${setupChoice === 'password' ? ' is-selected' : ''}`}
+                onClick={() => {
+                  setSetupChoice('password');
+                  setLocalPwErr('');
+                }}
+              >
+                <div className="access-choice-head">
+                  <KeyRound className="h-4 w-4 shrink-0" />
+                  <span>ตั้งรหัสผ่านเข้าระบบส่วนตัว</span>
+                </div>
+                <p>
+                  กำหนดรหัสผ่านของตัวเอง (อย่างน้อย 4 ตัวอักษร) · <strong>เมื่อปิดเบราว์เซอร์จะออกจากระบบทุกครั้ง</strong>{' '}
+                  และต้องกรอกรหัสผ่านเมื่อเปิดใหม่
+                </p>
+              </button>
+
+              <button
+                type="button"
+                className={`access-choice-card${setupChoice === 'none' ? ' is-selected' : ''}`}
+                onClick={() => {
+                  setSetupChoice('none');
+                  setLocalPwErr('');
+                }}
+              >
+                <div className="access-choice-head">
+                  <Shield className="h-4 w-4 shrink-0" />
+                  <span>เข้าใช้งานแบบไม่กำหนดรหัสผ่าน</span>
+                </div>
+                <p>
+                  เปิดเข้าหน้าทำงานได้ทันทีโดยไม่ต้องกรอกรหัสผ่าน (เหมาะสำหรับเครื่องส่วนตัวที่มีรหัสล็อกหน้าจออยู่แล้ว)
+                </p>
+              </button>
+            </div>
+
+            {setupChoice === 'password' && (
+              <div className="access-form-grid">
+                <label>
+                  ตั้งรหัสผ่านส่วนตัว <span className="req">*</span>
+                  <div className="access-pw-wrap">
+                    <input
+                      type={showNewPw ? 'text' : 'password'}
+                      required
+                      minLength={4}
+                      maxLength={64}
+                      autoComplete="new-password"
+                      value={newPassword}
+                      onChange={(e) => {
+                        setNewPassword(e.target.value);
+                        setLocalPwErr('');
+                      }}
+                      placeholder="อย่างน้อย 4 ตัวอักษร"
+                    />
+                    <button
+                      type="button"
+                      className="access-pw-eye"
+                      onClick={() => setShowNewPw((v) => !v)}
+                      aria-label={showNewPw ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                    >
+                      {showNewPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </label>
+                <label>
+                  ยืนยันรหัสผ่านอีกครั้ง <span className="req">*</span>
+                  <input
+                    type={showNewPw ? 'text' : 'password'}
+                    required
+                    minLength={4}
+                    maxLength={64}
+                    autoComplete="new-password"
+                    value={confirmPassword}
+                    onChange={(e) => {
+                      setConfirmPassword(e.target.value);
+                      setLocalPwErr('');
+                    }}
+                    placeholder="กรอกรหัสผ่านให้ตรงกัน"
+                  />
+                </label>
+              </div>
+            )}
+
+            {localPwErr && (
+              <div className="access-alert is-error" role="alert">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                <span>{localPwErr}</span>
+              </div>
+            )}
+
+            <div className="access-actions-row">
+              <button type="submit" className="btn-primary-emerald" disabled={busy}>
+                <KeyRound className="h-4 w-4" />
+                <span>
+                  {busy
+                    ? 'กำลังบันทึก...'
+                    : setupChoice === 'password'
+                    ? 'บันทึกรหัสผ่านและเข้าใช้งานระบบ'
+                    : 'เข้าใช้งานโดยไม่กำหนดรหัสผ่าน'}
+                </span>
+              </button>
+            </div>
+          </form>
+        )}
+
+        {reason === 'password_unlock' && (
+          <form className="access-gate-form" onSubmit={(e) => void handlePasswordUnlockSubmit(e)}>
+            <div className="access-status-card is-lock">
+              <div className="access-status-head">
+                <KeyRound className="h-5 w-5" />
+                <strong>กรอกรหัสผ่านส่วนตัวเพื่อเข้าใช้งานระบบ</strong>
+              </div>
+              <div className="access-status-details">
+                <div>
+                  บัญชีนี้เปิดใช้งานรหัสผ่านส่วนตัวไว้ ระบบจะออกจากระบบอัตโนมัติทุกครั้งเมื่อปิดเบราว์เซอร์ (การรีเฟรชหน้าเว็บยังคงใช้งานต่อได้)
+                </div>
+              </div>
+            </div>
+
+            <label>
+              รหัสผ่านเข้าระบบของคุณ <span className="req">*</span>
+              <div className="access-pw-wrap">
+                <input
+                  type={showUnlockPw ? 'text' : 'password'}
+                  required
+                  autoFocus
+                  autoComplete="current-password"
+                  value={unlockPassword}
+                  onChange={(e) => {
+                    setUnlockPassword(e.target.value);
+                    setLocalPwErr('');
+                  }}
+                  placeholder="กรอกรหัสผ่านส่วนตัวของคุณ"
+                />
+                <button
+                  type="button"
+                  className="access-pw-eye"
+                  onClick={() => setShowUnlockPw((v) => !v)}
+                  aria-label={showUnlockPw ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                >
+                  {showUnlockPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </label>
+
+            {localPwErr && (
+              <div className="access-alert is-error" role="alert">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                <span>{localPwErr}</span>
+              </div>
+            )}
+
+            <div className="access-actions-row">
+              <button type="submit" className="btn-primary-emerald" disabled={busy}>
+                <Lock className="h-4 w-4" />
+                <span>{busy ? 'กำลังตรวจสอบ...' : 'เข้าสู่ระบบ'}</span>
+              </button>
+              {onResetForgottenPassword && (
+                <button
+                  type="button"
+                  className="btn-outline-emerald"
+                  onClick={() => void onResetForgottenPassword()}
+                  disabled={busy}
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  <span>ลืมรหัสผ่าน? ยืนยัน Google เพื่อตั้งใหม่</span>
+                </button>
+              )}
+            </div>
+          </form>
         )}
       </div>
     </div>

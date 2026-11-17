@@ -62,7 +62,8 @@ service cloud.firestore {
           'uid', 'email', 'fullName', 'orgName', 'position', 'phone', 'note',
           'status', 'maxDevices', 'pendingDeviceId', 'pendingDeviceLabel',
           'approvedDeviceIds', 'approvedDeviceLabels', 'expiresAt',
-          'reviewedBy', 'reviewedAt', 'createdAt', 'updatedAt'
+          'reviewedBy', 'reviewedAt', 'passwordMode', 'appPasswordHash',
+          'createdAt', 'updatedAt'
         ])
         && data.uid is string && data.uid == userId && isValidId(data.uid)
         && data.email is string && data.email.size() >= 3 && data.email.size() <= 120
@@ -81,6 +82,8 @@ service cloud.firestore {
         && data.expiresAt is string && data.expiresAt.size() <= 40
         && data.reviewedBy is string && data.reviewedBy.size() <= 120
         && (!('reviewedAt' in data) || data.reviewedAt == null || data.reviewedAt is timestamp)
+        && (!('passwordMode' in data) || (data.passwordMode is string && data.passwordMode in ['unset', 'none', 'password']))
+        && (!('appPasswordHash' in data) || (data.appPasswordHash is string && data.appPasswordHash.size() <= 128 && data.appPasswordHash.matches('^$|^v1:[a-f0-9]{16}:[a-f0-9]{64}$')))
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
@@ -102,6 +105,8 @@ service cloud.firestore {
         && incoming().expiresAt == ''
         && incoming().reviewedBy == ''
         && !('reviewedAt' in incoming())
+        && !('passwordMode' in incoming())
+        && !('appPasswordHash' in incoming())
         && incoming().createdAt == request.time
         && incoming().updatedAt == request.time;
 
@@ -138,6 +143,19 @@ service cloud.firestore {
             && incoming().diff(existing()).affectedKeys().hasOnly([
               'pendingDeviceId', 'pendingDeviceLabel', 'note', 'updatedAt'
             ])
+          ) || (
+            isOwner(userId)
+            && existing().status == 'approved'
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'passwordMode', 'appPasswordHash', 'updatedAt'
+            ])
+            && 'passwordMode' in incoming()
+            && 'appPasswordHash' in incoming()
+            && incoming().passwordMode in ['none', 'password']
+            && (
+              (incoming().passwordMode == 'none' && incoming().appPasswordHash == '') ||
+              (incoming().passwordMode == 'password' && incoming().appPasswordHash.matches('^v1:[a-f0-9]{16}:[a-f0-9]{64}$'))
+            )
           )
         );
 

@@ -1,8 +1,10 @@
 import { getApp, getApps, initializeApp } from 'firebase/app';
 import {
+  browserLocalPersistence,
   getAuth,
   GoogleAuthProvider,
   onAuthStateChanged,
+  setPersistence,
   signInWithPopup,
   signOut,
   User,
@@ -31,6 +33,9 @@ export const DEFAULT_MAX_DEVICES = 2;
 
 const DEVICE_ID_STORAGE_KEY = 'kumwatsadu-license-device-id-v1';
 const LICENSE_CACHE_STORAGE_KEY = 'kumwatsadu-license-cache-v1';
+const MANUAL_LOGOUT_STORAGE_KEY = 'kumwatsadu-license-logged-out-v1';
+const USER_LOCK_STORAGE_PREFIX = 'kumwatsadu-user-lock-v1:';
+const SESSION_LOCK_UNLOCKED_KEY = 'kumwatsadu-lock-unlocked-v1';
 const LICENSE_IDB_NAME = 'kumwatsadu-license-idb';
 const LICENSE_IDB_STORE = 'kv';
 
@@ -43,6 +48,7 @@ const runtimeFirebaseConfig = {
 
 const app = getApps().length ? getApp() : initializeApp(runtimeFirebaseConfig);
 export const auth = getAuth(app);
+void setPersistence(auth, browserLocalPersistence).catch(() => {});
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
 const accessProvider = new GoogleAuthProvider();
@@ -112,6 +118,7 @@ async function testConnection() {
 void testConnection();
 
 export type AccessStatus = 'pending' | 'approved' | 'rejected' | 'revoked';
+export type PasswordMode = 'unset' | 'none' | 'password';
 
 export interface AccessRequestDoc {
   uid: string;
@@ -129,6 +136,8 @@ export interface AccessRequestDoc {
   approvedDeviceLabels: string;
   expiresAt: string;
   reviewedBy: string;
+  passwordMode?: PasswordMode;
+  appPasswordHash?: string;
   reviewedAt?: Timestamp | null;
   createdAt?: Timestamp | null;
   updatedAt?: Timestamp | null;
@@ -145,6 +154,8 @@ export interface LocalLicenseCache {
   approvedDeviceLabels: string;
   maxDevices: number;
   expiresAt: string;
+  passwordMode?: PasswordMode;
+  appPasswordHash?: string;
   lastVerifiedAt: string;
   digest: string;
 }
@@ -246,6 +257,17 @@ function generateDeviceId(): string {
   return `dev_${hex}`;
 }
 
+export function getStoredDeviceIdSync(): string {
+  const validRe = /^[a-zA-Z0-9_-]{8,80}$/;
+  try {
+    const lsVal = localStorage.getItem(DEVICE_ID_STORAGE_KEY);
+    if (lsVal && validRe.test(lsVal)) return lsVal;
+  } catch {
+    // ignore
+  }
+  return '';
+}
+
 export async function getOrCreateDeviceId(): Promise<string> {
   const validRe = /^[a-zA-Z0-9_-]{8,80}$/;
   try {
@@ -302,6 +324,10 @@ export function getDeviceLabel(): string {
 }
 
 async function computeDigest(payload: Omit<LocalLicenseCache, 'digest'>): Promise<string> {
+  const extra =
+    payload.passwordMode !== undefined || payload.appPasswordHash !== undefined
+      ? `|${payload.passwordMode || ''}|${payload.appPasswordHash || ''}`
+      : '';
   const raw = [
     payload.uid,
     payload.email,
@@ -310,7 +336,7 @@ async function computeDigest(payload: Omit<LocalLicenseCache, 'digest'>): Promis
     payload.lastVerifiedAt,
     payload.expiresAt,
     'kumwatsadu-license-v1',
-  ].join('|');
+  ].join('|') + extra;
 
   if (typeof crypto !== 'undefined' && crypto.subtle) {
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw));
@@ -321,6 +347,143 @@ async function computeDigest(payload: Omit<LocalLicenseCache, 'digest'>): Promis
     hash = (hash * 31 + raw.charCodeAt(i)) | 0;
   }
   return `fb_${Math.abs(hash).toString(16)}`;
+}
+
+async function sha256Hex(text: string): Promise<string> {
+  if (typeof crypto !== 'undefined' && crypto.subtle) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+    return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.abs(hash >>> 0).toString(16).padStart(64, '0');
+}
+
+export async function hashAppPassword(uid: string, password: string): Promise<string> {
+  const bytes = new Uint8Array(8);
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  const salt = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  const digest = await sha256Hex(`${salt}:${uid}:${password}`);
+  return `v1:${salt}:${digest}`;
+}
+
+export async function verifyAppPassword(
+  uid: string,
+  password: string,
+  storedHash: string
+): Promise<boolean> {
+  if (!storedHash || !password) return false;
+  const parts = storedHash.split(':');
+  if (parts.length !== 3 || parts[0] !== 'v1') return false;
+  const [, salt, expected] = parts;
+  if (!salt || !expected) return false;
+  const actual = await sha256Hex(`${salt}:${uid}:${password}`);
+  if (actual.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < actual.length; i++) {
+    diff |= actual.charCodeAt(i) ^ expected.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+export function isSessionUnlockedForUid(uid: string): boolean {
+  if (!uid) return false;
+  try {
+    return sessionStorage.getItem(SESSION_LOCK_UNLOCKED_KEY) === uid;
+  } catch {
+    return false;
+  }
+}
+
+export function markSessionUnlocked(uid: string): void {
+  if (!uid) return;
+  try {
+    sessionStorage.setItem(SESSION_LOCK_UNLOCKED_KEY, uid);
+  } catch {
+    // ignore
+  }
+}
+
+export function clearSessionUnlocked(): void {
+  try {
+    sessionStorage.removeItem(SESSION_LOCK_UNLOCKED_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+export interface UserPasswordLockState {
+  passwordMode: PasswordMode;
+  appPasswordHash: string;
+}
+
+export function getLocalUserLockSync(uid: string): UserPasswordLockState {
+  if (!uid) return { passwordMode: 'unset', appPasswordHash: '' };
+  try {
+    const raw = localStorage.getItem(USER_LOCK_STORAGE_PREFIX + uid);
+    if (!raw) return { passwordMode: 'unset', appPasswordHash: '' };
+    const parsed = JSON.parse(raw) as Partial<UserPasswordLockState>;
+    const mode: PasswordMode =
+      parsed.passwordMode === 'password' || parsed.passwordMode === 'none'
+        ? parsed.passwordMode
+        : 'unset';
+    return {
+      passwordMode: mode,
+      appPasswordHash: typeof parsed.appPasswordHash === 'string' ? parsed.appPasswordHash : '',
+    };
+  } catch {
+    return { passwordMode: 'unset', appPasswordHash: '' };
+  }
+}
+
+export async function getLocalUserLock(uid: string): Promise<UserPasswordLockState> {
+  if (!uid) return { passwordMode: 'unset', appPasswordHash: '' };
+  const syncVal = getLocalUserLockSync(uid);
+  if (syncVal.passwordMode !== 'unset') return syncVal;
+  try {
+    const raw = await idbGet(USER_LOCK_STORAGE_PREFIX + uid);
+    if (!raw) return { passwordMode: 'unset', appPasswordHash: '' };
+    const parsed = JSON.parse(raw) as Partial<UserPasswordLockState>;
+    const mode: PasswordMode =
+      parsed.passwordMode === 'password' || parsed.passwordMode === 'none'
+        ? parsed.passwordMode
+        : 'unset';
+    const result = {
+      passwordMode: mode,
+      appPasswordHash: typeof parsed.appPasswordHash === 'string' ? parsed.appPasswordHash : '',
+    };
+    try {
+      localStorage.setItem(USER_LOCK_STORAGE_PREFIX + uid, JSON.stringify(result));
+    } catch {
+      // ignore
+    }
+    return result;
+  } catch {
+    return { passwordMode: 'unset', appPasswordHash: '' };
+  }
+}
+
+export async function saveLocalUserLock(
+  uid: string,
+  passwordMode: PasswordMode,
+  appPasswordHash: string
+): Promise<UserPasswordLockState> {
+  const value: UserPasswordLockState = { passwordMode, appPasswordHash };
+  const serialized = JSON.stringify(value);
+  try {
+    localStorage.setItem(USER_LOCK_STORAGE_PREFIX + uid, serialized);
+  } catch {
+    // ignore
+  }
+  await idbSet(USER_LOCK_STORAGE_PREFIX + uid, serialized);
+  return value;
 }
 
 export function isLicenseDateExpired(expiresAt: string): boolean {
@@ -345,10 +508,12 @@ export async function saveLocalLicenseCache(
   const full: LocalLicenseCache = { ...base, digest };
   const serialized = JSON.stringify(full);
   try {
+    localStorage.removeItem(MANUAL_LOGOUT_STORAGE_KEY);
     localStorage.setItem(LICENSE_CACHE_STORAGE_KEY, serialized);
   } catch {
     // ignore
   }
+  await idbDel(MANUAL_LOGOUT_STORAGE_KEY);
   await idbSet(LICENSE_CACHE_STORAGE_KEY, serialized);
   return full;
 }
@@ -362,10 +527,55 @@ export async function clearLocalLicenseCache(): Promise<void> {
   await idbDel(LICENSE_CACHE_STORAGE_KEY);
 }
 
+export function getInitialCachedSessionSync(): {
+  deviceId: string;
+  cache: LocalLicenseCache;
+  daysRemaining: number;
+} | null {
+  try {
+    if (localStorage.getItem(MANUAL_LOGOUT_STORAGE_KEY) === '1') return null;
+    const deviceId = getStoredDeviceIdSync();
+    if (!deviceId) return null;
+    const raw = localStorage.getItem(LICENSE_CACHE_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as LocalLicenseCache;
+    if (!parsed || parsed.deviceId !== deviceId || !parsed.digest || !parsed.uid) return null;
+    if (isLicenseDateExpired(parsed.expiresAt)) return null;
+    const verifiedMs = Date.parse(parsed.lastVerifiedAt);
+    if (Number.isNaN(verifiedMs)) return null;
+    const elapsedMs = Date.now() - verifiedMs;
+    if (elapsedMs > OFFLINE_GRACE_MS || elapsedMs < -24 * 60 * 60 * 1000) return null;
+    const remainingMs = OFFLINE_GRACE_MS - elapsedMs;
+    const daysRemaining = Math.max(0, Math.ceil(remainingMs / (24 * 60 * 60 * 1000)));
+    return { deviceId, cache: parsed, daysRemaining };
+  } catch {
+    return null;
+  }
+}
+
 export async function verifyLocalLicenseCache(
   deviceId: string,
   user: User | null
 ): Promise<LocalCacheCheckResult> {
+  let loggedOutFlag: string | null = null;
+  try {
+    loggedOutFlag = localStorage.getItem(MANUAL_LOGOUT_STORAGE_KEY);
+  } catch {
+    loggedOutFlag = null;
+  }
+  if (!loggedOutFlag) {
+    loggedOutFlag = await idbGet(MANUAL_LOGOUT_STORAGE_KEY);
+  }
+  if (loggedOutFlag === '1') {
+    return {
+      valid: false,
+      expired30Days: false,
+      expiredLicense: false,
+      daysRemaining: 0,
+      cache: null,
+    };
+  }
+
   let raw: string | null = null;
   try {
     raw = localStorage.getItem(LICENSE_CACHE_STORAGE_KEY);
@@ -474,13 +684,91 @@ export function subscribeAuthState(cb: (user: User | null) => void): Unsubscribe
 }
 
 export async function signInWithGoogleForAccess(): Promise<User> {
+  try {
+    localStorage.removeItem(MANUAL_LOGOUT_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+  await idbDel(MANUAL_LOGOUT_STORAGE_KEY);
   const res = await signInWithPopup(auth, accessProvider);
   return res.user;
 }
 
 export async function signOutFromAccess(): Promise<void> {
+  clearSessionUnlocked();
+  try {
+    localStorage.setItem(MANUAL_LOGOUT_STORAGE_KEY, '1');
+  } catch {
+    // ignore
+  }
+  await idbSet(MANUAL_LOGOUT_STORAGE_KEY, '1');
   await clearLocalLicenseCache();
   await signOut(auth);
+}
+
+export async function updateUserAppPasswordSetting(params: {
+  uid: string;
+  isAdmin: boolean;
+  mode: PasswordMode;
+  newPassword?: string;
+}): Promise<UserPasswordLockState> {
+  const { uid, isAdmin, mode, newPassword } = params;
+  if (mode === 'password') {
+    if (!newPassword || newPassword.length < 4) {
+      throw new Error('กรุณากำหนดรหัสผ่านอย่างน้อย 4 ตัวอักษร');
+    }
+  }
+  const appPasswordHash = mode === 'password' ? await hashAppPassword(uid, newPassword!) : '';
+  const savedLock = await saveLocalUserLock(uid, mode, appPasswordHash);
+
+  // Sync into cached license so refreshes immediately reflect latest lock preference
+  try {
+    const rawCache = localStorage.getItem(LICENSE_CACHE_STORAGE_KEY);
+    if (rawCache) {
+      const parsed = JSON.parse(rawCache) as LocalLicenseCache;
+      if (parsed && parsed.uid === uid) {
+        await saveLocalLicenseCache({
+          uid: parsed.uid,
+          email: parsed.email,
+          fullName: parsed.fullName,
+          orgName: parsed.orgName,
+          isAdmin: parsed.isAdmin,
+          deviceId: parsed.deviceId,
+          approvedDeviceIds: parsed.approvedDeviceIds,
+          approvedDeviceLabels: parsed.approvedDeviceLabels,
+          maxDevices: parsed.maxDevices,
+          expiresAt: parsed.expiresAt,
+          passwordMode: mode,
+          appPasswordHash,
+        });
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  if (mode === 'password') {
+    markSessionUnlocked(uid);
+  } else {
+    clearSessionUnlocked();
+  }
+
+  if (!isAdmin && navigator.onLine && auth.currentUser?.uid === uid) {
+    const path = `access_requests/${uid}`;
+    try {
+      await updateDoc(doc(db, 'access_requests', uid), {
+        passwordMode: mode,
+        appPasswordHash,
+        updatedAt: serverTimestamp(),
+      });
+    } catch (error) {
+      if (!isOfflineError(error)) {
+        handleFirestoreError(error, OperationType.UPDATE, path);
+      }
+    }
+  }
+
+  return savedLock;
 }
 
 export async function fetchMyAccessRequest(uid: string): Promise<AccessRequestDoc | null> {

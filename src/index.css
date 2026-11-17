@@ -4484,8 +4484,193 @@ fieldset.cmt legend {
   margin-top: 6px;
 }
 
+.access-status-card.is-ok {
+  background: #f0fdf6;
+  border-color: #6ee7b7;
+}
+
+.access-status-card.is-lock {
+  background: var(--sunk);
+  border-color: var(--line-strong);
+}
+
+.access-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.access-choice-card {
+  text-align: left;
+  background: var(--surface);
+  border: 1.5px solid var(--line);
+  border-radius: 14px;
+  padding: 13px 14px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.access-choice-card:hover {
+  border-color: var(--line-strong);
+  background: var(--sunk);
+}
+
+.access-choice-card.is-selected {
+  border-color: var(--ink);
+  background: #f0fdf6;
+  box-shadow: 0 0 0 3px rgba(13, 122, 78, 0.12);
+}
+
+.access-choice-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--f-display);
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: var(--fg);
+}
+
+.access-choice-card.is-selected .access-choice-head {
+  color: var(--ink);
+}
+
+.access-choice-card p {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.access-pw-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.access-pw-wrap input {
+  padding-right: 40px !important;
+}
+
+.access-pw-eye {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  padding: 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.access-pw-eye:hover {
+  color: var(--fg);
+  background: var(--sunk);
+}
+
+.pw-settings-box {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--sunk);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pw-settings-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px 16px;
+}
+
+.pw-settings-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--f-display);
+  font-weight: 700;
+  font-size: 0.94rem;
+  color: var(--fg);
+}
+
+.pw-settings-sub {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-top: 3px;
+}
+
+.pw-settings-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-family: var(--f-display);
+}
+
+.pw-settings-badge.is-on {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.pw-settings-badge.is-off {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.pw-settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.pw-settings-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.pw-settings-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.pw-settings-fields input {
+  width: 100%;
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 0.88rem;
+  background: var(--surface);
+  color: var(--fg);
+}
+
 @media (max-width: 720px) {
   .access-form-grid,
+  .access-choice-grid,
   .license-status-grid,
   .admin-access-kpis {
     grid-template-columns: minmax(0, 1fr);
