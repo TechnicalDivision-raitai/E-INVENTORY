@@ -548,8 +548,8 @@ function KumWatsaduWorkspace({
         <aside className={`app-sidebar no-print${mobileNavOpen ? ' is-open' : ''}`} id="appSidebar">
           <div className="sidebar-brand" onClick={() => switchTab('org')} style={{ cursor: 'pointer' }} title="คลิกเพื่อแก้ไขข้อมูลหน่วยงาน">
             <img className="logo" id="mastLogo" alt="โลโก้หน่วยงาน" hidden />
-            <div className="logo-fallback" id="mastLogoFallback">
-              <Boxes className="h-5 w-5" />
+            <div className="logo-fallback" id="mastLogoFallback" style={{ background: 'transparent', padding: 0, boxShadow: 'none' }}>
+              <img src="/pwa-192x192.png" alt="ไอคอนระบบคุมวัสดุ" className="h-full w-full object-contain" />
             </div>
             <div className="sidebar-brand-text">
               <div className="sidebar-title">ระบบคุมวัสดุ</div>

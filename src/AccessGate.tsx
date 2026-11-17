@@ -183,8 +183,8 @@ export const AccessGate: React.FC<AccessGateProps> = ({
     return (
       <div className="access-gate-shell">
         <div className="access-gate-card access-gate-loading">
-          <div className="access-gate-badge">
-            <ShieldCheck className="h-7 w-7" />
+          <div className="access-gate-badge" style={{ background: 'transparent', boxShadow: 'none', padding: 0 }}>
+            <img src="/pwa-192x192.png" alt="ระบบคุมวัสดุ" className="h-full w-full object-contain" />
           </div>
           <h1>ระบบคุมวัสดุ</h1>
           <p>กำลังตรวจสอบสิทธิ์การเข้าใช้งานและรหัสเครื่อง...</p>
@@ -198,8 +198,8 @@ export const AccessGate: React.FC<AccessGateProps> = ({
     <div className="access-gate-shell">
       <div className="access-gate-card">
         <div className="access-gate-header">
-          <div className="access-gate-badge">
-            <Lock className="h-6 w-6" />
+          <div className="access-gate-badge" style={{ background: 'transparent', boxShadow: 'none', padding: 0 }}>
+            <img src="/pwa-192x192.png" alt="ระบบคุมวัสดุ" className="h-full w-full object-contain" />
           </div>
           <div>
             <div className="access-gate-eyebrow">ระบบควบคุมสิทธิ์การใช้งาน</div>
