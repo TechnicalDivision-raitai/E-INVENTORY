@@ -2721,6 +2721,313 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     $('mMin').value = m?.min ?? '';
   }
   $('mReset')?.addEventListener('click', () => resetMat(null));
+  const thWordSeg: any =
+    typeof Intl !== 'undefined' && typeof (Intl as any).Segmenter === 'function'
+      ? new (Intl as any).Segmenter('th', { granularity: 'word' })
+      : null;
+
+  function normMatText(s: string): string {
+    return String(s || '')
+      .normalize('NFKC')
+      .replace(/[\u200B-\u200D\uFEFF]/g, '')
+      .toLowerCase()
+      .replace(/[-_./(),[\]{}]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function stripThaiMarks(s: string): string {
+    return s.replace(/[\u0E47-\u0E4E]/g, '');
+  }
+
+  function compactMatText(s: string): string {
+    return normMatText(s).replace(/\s+/g, '');
+  }
+
+  const MAT_SIM_STOPWORDS = new Set([
+    'ขนาด',
+    'แบบ',
+    'ชนิด',
+    'อย่าง',
+    'รุ่น',
+    'ยี่ห้อ',
+    'เบอร์',
+    'no',
+    'ที่',
+    'และ',
+    'หรือ',
+    'ของ',
+  ]);
+  const MAT_SIM_UNITWORDS = new Set([
+    'นิ้ว',
+    'ซม',
+    'มม',
+    'เมตร',
+    'กรัม',
+    'กก',
+    'ลิตร',
+    'มล',
+    'แผ่น',
+    'เล่ม',
+    'ด้าม',
+    'แท่ง',
+    'กล่อง',
+    'แพ็ค',
+    'ห่อ',
+    'ม้วน',
+    'อัน',
+    'ใบ',
+    'ถุง',
+    'ขวด',
+    'กระป๋อง',
+    'ชุด',
+  ]);
+
+  function extractMatTokens(s: string): string[] {
+    const norm = normMatText(s);
+    if (!norm) return [];
+    const rawTokens: string[] = [];
+    if (thWordSeg) {
+      for (const part of thWordSeg.segment(norm)) {
+        if (part.isWordLike) {
+          const w = String(part.segment || '').trim();
+          if (w) rawTokens.push(w);
+        }
+      }
+    } else {
+      norm.split(' ').forEach((w) => {
+        if (w) rawTokens.push(w);
+      });
+    }
+    return Array.from(new Set(rawTokens.filter((t) => t.length >= 2 && !MAT_SIM_STOPWORDS.has(t))));
+  }
+
+  function isDescriptiveToken(tok: string): boolean {
+    if (/^\d+(?:\.\d+)?$/.test(tok)) return false;
+    if (/^[a-z]{1,2}\d{1,3}$|^\d+[a-z]{1,3}$/i.test(tok)) return false;
+    if (/^[\u0E00-\u0E7F]+$/.test(tok)) {
+      return tok.length >= 2 && !MAT_SIM_UNITWORDS.has(tok);
+    }
+    return tok.length >= 3;
+  }
+
+  function diceBigrams(a: string, b: string): number {
+    if (!a || !b) return 0;
+    if (a === b) return 1;
+    if (a.length < 2 || b.length < 2) return 0;
+    const mapA = new Map<string, number>();
+    for (let i = 0; i < a.length - 1; i++) {
+      const bg = a.slice(i, i + 2);
+      mapA.set(bg, (mapA.get(bg) || 0) + 1);
+    }
+    let hits = 0;
+    for (let i = 0; i < b.length - 1; i++) {
+      const bg = b.slice(i, i + 2);
+      const cnt = mapA.get(bg) || 0;
+      if (cnt > 0) {
+        hits++;
+        mapA.set(bg, cnt - 1);
+      }
+    }
+    return (2 * hits) / (a.length - 1 + b.length - 1);
+  }
+
+  function scoreMaterialSimilarity(nameA: string, nameB: string): { score: number; reason: string } | null {
+    const compA = compactMatText(nameA);
+    const compB = compactMatText(nameB);
+    if (!compA || !compB) return null;
+    if (compA === compB) {
+      return { score: 1, reason: 'ชื่อเหมือนกัน (ต่างช่องว่างหรือตัวพิมพ์)' };
+    }
+    const bareA = stripThaiMarks(compA);
+    const bareB = stripThaiMarks(compB);
+    if (bareA === bareB && compA.length >= 3) {
+      return { score: 0.96, reason: 'ตัวสะกดเหมือนกัน (ต่างวรรณยุกต์/การันต์)' };
+    }
+
+    const shorter = compA.length <= compB.length ? compA : compB;
+    const longer = compA.length <= compB.length ? compB : compA;
+    const dice = diceBigrams(bareA, bareB);
+
+    if (shorter.length >= 3 && longer.startsWith(shorter)) {
+      return {
+        score: 0.88 + 0.08 * (shorter.length / longer.length),
+        reason: 'ชื่อขึ้นต้นเหมือนกัน',
+      };
+    }
+
+    const tokA = extractMatTokens(nameA);
+    const tokB = extractMatTokens(nameB);
+    const tokSetB = new Set(tokB);
+    const bareTokSetB = new Set(tokB.map(stripThaiMarks));
+
+    const shared = tokA.filter((t) => tokSetB.has(t) || bareTokSetB.has(stripThaiMarks(t)));
+    const sharedDesc = shared.filter(isDescriptiveToken);
+
+    if (sharedDesc.length > 0 && tokA.length > 0 && tokB.length > 0) {
+      const minTok = Math.min(tokA.length, tokB.length);
+      const unionTok = new Set([...tokA, ...tokB]).size;
+      const containment = shared.length / minTok;
+      const jaccard = shared.length / unionTok;
+
+      if (containment >= 0.75) {
+        return {
+          score: 0.84 + 0.1 * jaccard,
+          reason: `พบคำตรงกัน (${shared.slice(0, 3).join(', ')})`,
+        };
+      }
+      if (sharedDesc.length >= 2 && jaccard >= 0.45) {
+        return {
+          score: 0.78 + 0.12 * jaccard,
+          reason: `พบคำสำคัญร่วมกัน (${sharedDesc.slice(0, 3).join(', ')})`,
+        };
+      }
+      if (tokA[0] && tokA[0] === tokB[0] && isDescriptiveToken(tokA[0]) && tokA[0].length >= 4 && dice >= 0.48) {
+        return {
+          score: 0.76 + 0.1 * dice,
+          reason: `หมวดคำหลักเดียวกัน (${tokA[0]})`,
+        };
+      }
+    }
+
+    // Fallback: a descriptive token (>=4 chars) is contained inside the other name AND shares another token or high prefix/dice
+    if (
+      shorter.length >= 4 &&
+      longer.includes(shorter) &&
+      (dice >= 0.55 || (tokA[0] && tokB[0] && (tokA[0] === tokB[0] || bareA.startsWith(stripThaiMarks(tokB[0])))))
+    ) {
+      return {
+        score: 0.78 + 0.08 * dice,
+        reason: 'มีชื่อวัสดุเดิมเป็นส่วนประกอบ',
+      };
+    }
+
+    if (Math.min(compA.length, compB.length) >= 4 && dice >= 0.72) {
+      return {
+        score: dice,
+        reason: 'ตัวสะกดใกล้เคียงกัน',
+      };
+    }
+
+    return null;
+  }
+
+  interface SimilarMatHit {
+    id?: string;
+    name: string;
+    code: string;
+    cat: string;
+    unit: string;
+    qty: number;
+    score: number;
+    reason: string;
+    source: 'db' | 'file';
+    row?: number;
+  }
+
+  function findSimilarMaterials(
+    name: string,
+    candidates: any[],
+    excludeId: string | null = null,
+    limit = 5
+  ): SimilarMatHit[] {
+    const hits: SimilarMatHit[] = [];
+    for (const m of candidates) {
+      if (!m || !m.name) continue;
+      if (excludeId && m.id === excludeId) continue;
+      const res = scoreMaterialSimilarity(name, m.name);
+      if (!res) continue;
+      hits.push({
+        id: m.id,
+        name: m.name,
+        code: m.code || '',
+        cat: m.cat || 'วัสดุอื่น',
+        unit: m.unit || '',
+        qty: m.id ? r2(current(m.id).q) : 0,
+        score: res.score,
+        reason: res.reason,
+        source: m._source === 'file' ? 'file' : 'db',
+        row: m.row,
+      });
+    }
+    hits.sort((a, b) => b.score - a.score);
+    return hits.slice(0, limit);
+  }
+
+  let pendingMatSave: { id: string; body: any } | null = null;
+  function closeMatSimModal() {
+    pendingMatSave = null;
+    if ($('matSimModal')) $('matSimModal').hidden = true;
+  }
+  function openMatSimModal(id: string, body: any, simList: SimilarMatHit[]) {
+    pendingMatSave = { id, body };
+    const incEl = $('matSimIncoming');
+    if (incEl) {
+      incEl.textContent = `${body.name}${body.unit ? ` (${body.unit})` : ''}${body.cat ? ` · ${body.cat}` : ''}`;
+    }
+    const listEl = $('matSimList');
+    if (listEl) {
+      listEl.innerHTML = simList
+        .map(
+          (s) => `<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);">
+            <div style="min-width:0;flex:1 1 240px;">
+              <div style="font-weight:700;color:var(--fg)">${esc(s.name)}${
+            s.code ? ` <span class="sub">(${esc(s.code)})</span>` : ''
+          }</div>
+              <div class="sub" style="font-size:0.78rem">
+                ${esc(s.cat)} · หน่วย: ${esc(s.unit || '—')} · คงเหลือ: ${fmtQ(s.qty)} · <span style="color:var(--warn);font-weight:600">${esc(s.reason)}</span>
+              </div>
+            </div>
+            ${
+              s.id
+                ? `<button type="button" class="btn small" data-sim-edit="${esc(s.id)}">ใช้/แก้ไขรายการนี้แทน</button>`
+                : ''
+            }
+          </div>`
+        )
+        .join('');
+    }
+    if ($('matSimModal')) $('matSimModal').hidden = false;
+  }
+
+  async function saveMaterialRecord(id: string, body: any) {
+    try {
+      await db.doc('materials/' + id).set(body);
+      touchRecentCat(body.cat);
+      touchRecentUnit(body.unit);
+      toast('บันทึกวัสดุ ' + body.name + ' แล้ว');
+      resetMat(null);
+    } catch (err) {
+      msg('mMsg', errText(err), 1);
+    }
+  }
+
+  $('matSimClose')?.addEventListener('click', () => {
+    closeMatSimModal();
+    $('mName')?.focus();
+  });
+  $('matSimCancel')?.addEventListener('click', () => {
+    closeMatSimModal();
+    $('mName')?.focus();
+  });
+  $('matSimConfirm')?.addEventListener('click', async () => {
+    if (!pendingMatSave) return;
+    const { id, body } = pendingMatSave;
+    closeMatSimModal();
+    await saveMaterialRecord(id, body);
+  });
+  $('matSimList')?.addEventListener('click', (e: Event) => {
+    const btn = (e.target as HTMLElement).closest('[data-sim-edit]') as HTMLElement | null;
+    if (!btn) return;
+    const m = matById(btn.dataset.simEdit!);
+    closeMatSimModal();
+    if (m) {
+      resetMat(m);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      $('mName')?.focus();
+    }
+  });
+
   $('matForm')?.addEventListener('submit', async (e: Event) => {
     e.preventDefault();
     if (!db) return msg('mMsg', 'เบราว์เซอร์นี้บันทึกข้อมูลไม่ได้', 1);
@@ -2743,16 +3050,17 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     };
     if (body.max != null && body.min != null && body.min > body.max)
       return msg('mMsg', 'จำนวนอย่างต่ำต้องไม่มากกว่าจำนวนอย่างสูง', 1);
-    try {
-      const id = editMat || db.collection('materials').doc().id;
-      await db.doc('materials/' + id).set(body);
-      touchRecentCat(body.cat);
-      touchRecentUnit(body.unit);
-      toast('บันทึกวัสดุ ' + name + ' แล้ว');
-      resetMat(null);
-    } catch (err) {
-      msg('mMsg', errText(err), 1);
+    const id = editMat || db.collection('materials').doc().id;
+    const shouldCheckSimilar = !old || normMatText(old.name) !== normMatText(name);
+    if (shouldCheckSimilar) {
+      rebuildLedgers();
+      const simList = findSimilarMaterials(name, materials, editMat);
+      if (simList.length) {
+        openMatSimModal(id, body, simList);
+        return;
+      }
     }
+    await saveMaterialRecord(id, body);
   });
   $('mDel')?.addEventListener('click', async () => {
     const m = matById(editMat!);
@@ -2966,6 +3274,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     }
     if (map.name == null || map.unit == null) return null;
     const seen = new Set<string>(),
+      newSeenCandidates: any[] = [],
       out: any[] = [];
     rows.slice(h + 1).forEach((r, i) => {
       const g = (k: string) =>
@@ -3013,6 +3322,9 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
         qtyMismatch: false,
         qtyChoice: 'excel',
         confirmedQty: true,
+        similarMatches: [] as SimilarMatHit[],
+        simChoice: 'new',
+        confirmedSim: true,
       };
       if (!it.name) {
         it.st = 'bad';
@@ -3041,8 +3353,19 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
         it.st = 'ok';
         it.why = it.qtyMismatch ? 'รอยืนยันจำนวน' : 'อัปเดตข้อมูล';
       } else {
+        const simHits = findSimilarMaterials(it.name, [...materials, ...newSeenCandidates], null, 3);
+        it.similarMatches = simHits;
+        it.confirmedSim = simHits.length === 0;
         it.st = 'ok';
-        it.why = 'เพิ่มใหม่';
+        it.why = simHits.length ? 'รอยืนยันชื่อคล้าย' : 'เพิ่มใหม่';
+        newSeenCandidates.push({
+          name: it.name,
+          code: it.code,
+          cat: it.cat,
+          unit: it.unit,
+          row: it.row,
+          _source: 'file',
+        });
       }
       if (it.name) seen.add(it.name);
       out.push(it);
@@ -3066,6 +3389,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     const ok = impItems.filter((x) => x.st === 'ok'),
       newItems = ok.filter((x) => x.mode === 'new'),
       updItems = ok.filter((x) => x.mode === 'update'),
+      unconfirmedSims = newItems.filter((x) => x.similarMatches?.length && !x.confirmedSim),
       unconfirmedMismatches = updItems.filter((x) => x.qtyMismatch && !x.confirmedQty),
       needOpenLines = ok.filter(
         (x) =>
@@ -3075,7 +3399,15 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     $('impRows').innerHTML = impItems
       .map((x) => {
         let badgeHtml = `<span class="st ${x.st}">${esc(x.why)}</span>`;
-        if (x.st === 'ok' && x.mode === 'update') {
+        if (x.st === 'ok' && x.mode === 'new' && x.similarMatches?.length) {
+          if (!x.confirmedSim) {
+            badgeHtml = `<span class="st warn">รอยืนยันชื่อคล้าย</span><div class="sub" style="font-size:0.72rem;color:var(--warn)">คล้าย: ${esc(
+              x.similarMatches[0].name
+            )}</div>`;
+          } else {
+            badgeHtml = `<span class="st ok">ยืนยันเพิ่มใหม่แล้ว</span>`;
+          }
+        } else if (x.st === 'ok' && x.mode === 'update') {
           if (x.qtyMismatch && !x.confirmedQty) {
             badgeHtml = `<span class="st warn">รอยืนยันจำนวน (ในระบบ ${fmtQ(x.sysQty)})</span>`;
           } else if (x.qtyMismatch && x.confirmedQty) {
@@ -3119,6 +3451,9 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     if (newItems.length) sumParts.push(`เพิ่มใหม่ ${newItems.length} รายการ`);
     if (updItems.length) sumParts.push(`อัปเดตข้อมูลเดิม ${updItems.length} รายการ`);
     if (!newItems.length && !updItems.length) sumParts.push('ไม่มีรายการที่นำเข้าหรืออัปเดตได้');
+    if (unconfirmedSims.length) {
+      sumParts.push(`รอยืนยันชื่อใกล้เคียง ${unconfirmedSims.length} รายการ`);
+    }
     if (unconfirmedMismatches.length) {
       sumParts.push(`รอยืนยันจำนวนไม่ตรงกับระบบ ${unconfirmedMismatches.length} รายการ`);
     }
@@ -3127,6 +3462,8 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     $('impGo').disabled = !ok.length;
     if (!ok.length) {
       $('impGo').textContent = 'ไม่มีรายการให้นำเข้า';
+    } else if (unconfirmedSims.length) {
+      $('impGo').textContent = `ตรวจสอบชื่อใกล้เคียงและนำเข้า (${ok.length} รายการ)`;
     } else if (unconfirmedMismatches.length) {
       $('impGo').textContent = `ตรวจสอบจำนวนและอัปเดต (${ok.length} รายการ)`;
     } else if (newItems.length && updItems.length) {
@@ -3136,6 +3473,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     } else {
       $('impGo').textContent = `นำเข้า ${newItems.length} รายการ`;
     }
+    if ($('impCard')) $('impCard').hidden = false;
     $('impPrev').hidden = false;
   }
   function closeImpQtyModal() {
@@ -3224,10 +3562,118 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     renderImport();
     await executeImport();
   });
+  function closeImpSimModal() {
+    if ($('impSimModal')) $('impSimModal').hidden = true;
+  }
+  function renderImpSimModal() {
+    const sims = impItems.filter((x) => x.st === 'ok' && x.mode === 'new' && x.similarMatches?.length);
+    const subEl = $('impSimModalSub');
+    if (subEl) {
+      subEl.textContent = `พบรายการนำเข้าที่มีชื่อใกล้เคียงกับวัสดุเดิม จำนวน ${sims.length} รายการ กรุณาเลือกว่าต้องการเพิ่มเป็นวัสดุใหม่หรือข้ามรายการที่ซ้ำซ้อน`;
+    }
+    const rowsEl = $('impSimRows');
+    if (!rowsEl) return;
+    rowsEl.innerHTML = sims
+      .map((x) => {
+        const matchesHtml = (x.similarMatches as SimilarMatHit[])
+          .map(
+            (s) => `<div style="margin-bottom:4px;">
+              <strong>${esc(s.name)}</strong>${
+              s.source === 'file' && s.row ? ` <span class="sub">(แถว ${s.row} ในไฟล์นี้)</span>` : ''
+            }
+              <div class="sub" style="font-size:0.74rem">${esc(s.cat)} · หน่วย: ${esc(s.unit || '—')}${
+              s.source === 'db' ? ` · คงเหลือ: ${fmtQ(s.qty)}` : ''
+            } · <span style="color:var(--warn)">${esc(s.reason)}</span></div>
+            </div>`
+          )
+          .join('');
+        return `<tr data-sim-row="${x.row}">
+          <td class="sub">${x.row}</td>
+          <td>
+            <div style="font-weight:600">${esc(x.name)}</div>
+            <div class="sub">${esc(x.cat)} · หน่วย: ${esc(x.unit)}${x.note ? ` · ${esc(x.note)}` : ''}</div>
+          </td>
+          <td>${matchesHtml}</td>
+          <td>
+            <div class="imp-choice-group">
+              <button type="button" class="btn small ${
+                x.simChoice === 'new' ? 'primary' : ''
+              }" data-imp-sim-choice="new" data-row="${x.row}">
+                เพิ่มเป็นรายการใหม่
+              </button>
+              <button type="button" class="btn small ${
+                x.simChoice === 'skip' ? 'primary' : ''
+              }" data-imp-sim-choice="skip" data-row="${x.row}">
+                ข้ามรายการนี้
+              </button>
+            </div>
+          </td>
+        </tr>`;
+      })
+      .join('');
+  }
+  function openImpSimModal() {
+    renderImpSimModal();
+    if ($('impSimModal')) $('impSimModal').hidden = false;
+  }
+  $('impSimClose')?.addEventListener('click', closeImpSimModal);
+  $('impSimCancel')?.addEventListener('click', closeImpSimModal);
+  $('impSimAllNew')?.addEventListener('click', () => {
+    impItems.forEach((x) => {
+      if (x.st === 'ok' && x.mode === 'new' && x.similarMatches?.length) {
+        x.simChoice = 'new';
+      }
+    });
+    renderImpSimModal();
+  });
+  $('impSimAllSkip')?.addEventListener('click', () => {
+    impItems.forEach((x) => {
+      if (x.st === 'ok' && x.mode === 'new' && x.similarMatches?.length) {
+        x.simChoice = 'skip';
+      }
+    });
+    renderImpSimModal();
+  });
+  $('impSimRows')?.addEventListener('click', (e: any) => {
+    const btn = e.target?.closest?.('[data-imp-sim-choice]');
+    if (!btn) return;
+    const rowNum = Number(btn.dataset.row);
+    const choice = btn.dataset.impSimChoice;
+    const item = impItems.find((x) => x.row === rowNum);
+    if (item && (choice === 'new' || choice === 'skip')) {
+      item.simChoice = choice;
+      renderImpSimModal();
+    }
+  });
+  $('impSimConfirm')?.addEventListener('click', async () => {
+    impItems.forEach((x) => {
+      if (x.st === 'ok' && x.mode === 'new' && x.similarMatches?.length) {
+        x.confirmedSim = true;
+        if (x.simChoice === 'skip') {
+          x.st = 'skip';
+          x.why = 'ข้าม (ชื่อคล้าย)';
+        } else {
+          x.st = 'ok';
+          x.why = 'เพิ่มใหม่';
+        }
+      }
+    });
+    closeImpSimModal();
+    renderImport();
+    const remaining = impItems.filter((x) => x.st === 'ok');
+    if (!remaining.length) {
+      toast('ข้ามรายการชื่อใกล้เคียงแล้ว ไม่มีรายการคงเหลือสำหรับนำเข้า');
+      return;
+    }
+    await executeImport();
+  });
+
   function closeImport() {
     impItems = [];
+    closeImpSimModal();
     closeImpQtyModal();
     $('impPrev').hidden = true;
+    if ($('impCard')) $('impCard').hidden = true;
     $('impFile').value = '';
     $('impDate').value = '';
     $('impNo').value = '';
@@ -3235,6 +3681,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     msg('impMsg', '');
   }
   $('impCancel')?.addEventListener('click', closeImport);
+  $('impCardClose')?.addEventListener('click', closeImport);
   $('impNo')?.addEventListener('input', () => ($('impNo').dataset.touched = 1));
   $('impDate')?.addEventListener('change', () => {
     if (impItems.length) renderImport();
@@ -3242,6 +3689,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
   $('impFile')?.addEventListener('change', async () => {
     const f = $('impFile').files[0];
     if (!f) return;
+    if ($('impCard')) $('impCard').hidden = false;
     msg('impMsg', 'กำลังอ่านไฟล์…');
     try {
       let rows;
@@ -3267,6 +3715,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       msg('impMsg', f.name);
     } catch (err: any) {
       closeImport();
+      if ($('impCard')) $('impCard').hidden = false;
       msg('impMsg', 'อ่านไฟล์ไม่ได้: ' + (err?.message || err), 1);
     }
   });
@@ -3274,6 +3723,13 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     if (!db) return msg('impSum', 'เบราว์เซอร์นี้บันทึกข้อมูลไม่ได้', 1);
     const ok = impItems.filter((x) => x.st === 'ok');
     if (!ok.length) return;
+    const unconfirmedSims = ok.filter(
+      (x) => x.mode === 'new' && x.similarMatches?.length && !x.confirmedSim
+    );
+    if (unconfirmedSims.length) {
+      openImpSimModal();
+      return;
+    }
     const unconfirmed = ok.filter((x) => x.mode === 'update' && x.qtyMismatch && !x.confirmedQty);
     if (unconfirmed.length) {
       openImpQtyModal();

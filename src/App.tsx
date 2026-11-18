@@ -1083,6 +1083,20 @@ function KumWatsaduWorkspace({
                     <h3 id="matTitle">เพิ่มวัสดุเข้าทะเบียน</h3>
                     <span className="sub">กำหนดชื่อ หน่วยนับ ประเภท และเกณฑ์แจ้งเตือนจำนวนอย่างสูง/อย่างต่ำ</span>
                   </div>
+                  <div className="imp-actions">
+                    <button type="button" className="btn" id="impTpl">
+                      ดาวน์โหลดแบบฟอร์ม Excel
+                    </button>
+                    <label className="btn primary" htmlFor="impFile" style={{ cursor: 'pointer' }}>
+                      เลือกไฟล์ Excel เพื่อนำเข้า…
+                    </label>
+                    <input
+                      id="impFile"
+                      type="file"
+                      accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+                      hidden
+                    />
+                  </div>
                 </div>
                 <div className="grid">
                   <div className="f c6">
@@ -1207,28 +1221,17 @@ function KumWatsaduWorkspace({
                 </div>
               </form>
 
-              <div className="card" id="impCard">
+              <div className="card" id="impCard" hidden>
                 <div className="cardhead">
                   <div>
                     <h3>นำเข้าวัสดุจากไฟล์ Excel (.xlsx / .csv)</h3>
                     <span className="sub">
-                      เพิ่มทะเบียนวัสดุใหม่ หรืออัปเดตข้อมูลเพิ่มเติม (เช่น ราคา อย่างสูง/ต่ำ) ทีละหลายรายการ
+                      ตรวจสอบรายการก่อนยืนยันนำเข้า หรืออัปเดตข้อมูลวัสดุทีละหลายรายการ
                     </span>
                   </div>
-                  <div className="imp-actions">
-                    <button type="button" className="btn" id="impTpl">
-                      ดาวน์โหลดแบบฟอร์ม Excel
-                    </button>
-                    <label className="btn primary" htmlFor="impFile" style={{ cursor: 'pointer' }}>
-                      เลือกไฟล์ Excel เพื่อนำเข้า…
-                    </label>
-                    <input
-                      id="impFile"
-                      type="file"
-                      accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
-                      hidden
-                    />
-                  </div>
+                  <button type="button" className="btn small" id="impCardClose">
+                    ปิด
+                  </button>
                 </div>
                 <div className="msg imp-msg" id="impMsg"></div>
                 <div id="impPrev" hidden>
@@ -1280,6 +1283,9 @@ function KumWatsaduWorkspace({
               <div className="card">
                 <div className="cardhead">
                   <h3>รายการในทะเบียนวัสดุทั้งหมด</h3>
+                  <span className="card-badge tabular-nums" id="matTotalCnt">
+                    ทั้งหมด {materialCount.toLocaleString('th-TH')} รายการ
+                  </span>
                 </div>
                 <div className="tablebox">
                   <table>
@@ -2228,6 +2234,116 @@ function KumWatsaduWorkspace({
             </button>
             <button type="button" className="btn primary" id="impQtyConfirm">
               ยืนยันจำนวนและอัปเดตข้อมูล
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Similar Material Name Confirmation Modal (Manual Add/Edit) */}
+      <div
+        className="modal"
+        id="matSimModal"
+        hidden
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="matSimModalTitle"
+        style={{ alignItems: 'center', justifyContent: 'center' }}
+      >
+        <div className="mv-detail-box" style={{ width: 'min(640px, 100%)' }}>
+          <div className="mv-detail-head">
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+              <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600" style={{ marginTop: 2 }} />
+              <div>
+                <h3 id="matSimModalTitle">พบชื่อวัสดุที่ใกล้เคียงในทะเบียนแล้ว</h3>
+                <div className="sub" id="matSimModalSub">
+                  กรุณาตรวจสอบรายการที่มีอยู่แล้วด้านล่างก่อนยืนยัน เพื่อลดความซ้ำซ้อนของทะเบียนวัสดุ
+                </div>
+              </div>
+            </div>
+            <button type="button" className="btn small" id="matSimClose">
+              ปิด
+            </button>
+          </div>
+          <div className="mv-detail-body" style={{ gap: 12 }}>
+            <div className="rounded-xl border border-[var(--line)] bg-[var(--sunk)] px-3.5 py-2.5 text-sm">
+              <div className="text-xs font-semibold text-[var(--muted)]">วัสดุที่กำลังจะบันทึก</div>
+              <div className="mt-0.5 font-bold text-[var(--fg)]" id="matSimIncoming"></div>
+            </div>
+            <div className="text-xs font-semibold text-[var(--muted)]">
+              รายการในทะเบียนที่มีชื่อใกล้เคียง:
+            </div>
+            <div id="matSimList" className="flex flex-col gap-2"></div>
+          </div>
+          <div className="mv-detail-foot">
+            <button type="button" className="btn" id="matSimCancel">
+              ยกเลิก / กลับไปแก้ไขชื่อ
+            </button>
+            <button type="button" className="btn primary" id="matSimConfirm">
+              ยืนยันเพิ่มเป็นรายการใหม่
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Excel Import Similar Material Name Confirmation Modal */}
+      <div
+        className="modal"
+        id="impSimModal"
+        hidden
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="impSimModalTitle"
+        style={{ alignItems: 'center', justifyContent: 'center' }}
+      >
+        <div className="mv-detail-box" style={{ width: 'min(820px, 100%)' }}>
+          <div className="mv-detail-head">
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+              <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600" style={{ marginTop: 2 }} />
+              <div>
+                <h3 id="impSimModalTitle">พบชื่อวัสดุที่ใกล้เคียงกับทะเบียนเดิม</h3>
+                <div className="sub" id="impSimModalSub">
+                  พบรายการนำเข้าที่มีชื่อใกล้เคียงกับวัสดุเดิม กรุณายืนยันว่าต้องการเพิ่มใหม่หรือข้ามรายการที่ซ้ำซ้อน
+                </div>
+              </div>
+            </div>
+            <button type="button" className="btn small" id="impSimClose">
+              ปิดหน้าต่าง
+            </button>
+          </div>
+          <div className="mv-detail-body" style={{ gap: 12 }}>
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--line)] bg-[var(--sunk)] px-3.5 py-2.5">
+              <span className="text-sm font-semibold text-[var(--fg)]">
+                ตั้งค่าทุกรายการพร้อมกัน:
+              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" className="btn small primary" id="impSimAllNew">
+                  ยืนยันเพิ่มเป็นรายการใหม่ทั้งหมด
+                </button>
+                <button type="button" className="btn small" id="impSimAllSkip">
+                  ข้ามรายการชื่อคล้ายทั้งหมด
+                </button>
+              </div>
+            </div>
+            <div className="tablebox impbox" style={{ margin: 0, maxHeight: 360 }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>แถว</th>
+                    <th>ชื่อวัสดุในไฟล์ Excel</th>
+                    <th>รายการใกล้เคียงที่พบ</th>
+                    <th>เลือกการดำเนินการ</th>
+                  </tr>
+                </thead>
+                <tbody id="impSimRows"></tbody>
+              </table>
+            </div>
+          </div>
+          <div className="mv-detail-foot">
+            <button type="button" className="btn" id="impSimCancel">
+              ย้อนกลับ
+            </button>
+            <button type="button" className="btn primary" id="impSimConfirm">
+              ยืนยันและดำเนินการต่อ
             </button>
           </div>
         </div>
