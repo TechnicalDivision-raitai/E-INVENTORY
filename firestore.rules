@@ -123,10 +123,21 @@ service cloud.firestore {
             && incoming().diff(existing()).affectedKeys().hasOnly([
               'status', 'maxDevices', 'pendingDeviceId', 'pendingDeviceLabel',
               'approvedDeviceIds', 'approvedDeviceLabels', 'expiresAt',
-              'reviewedBy', 'reviewedAt', 'note', 'updatedAt'
+              'reviewedBy', 'reviewedAt', 'note', 'passwordMode', 'appPasswordHash', 'updatedAt'
             ])
             && incoming().reviewedBy == request.auth.token.email
             && incoming().reviewedAt == request.time
+            && (
+              (!('passwordMode' in incoming()) && !('appPasswordHash' in incoming())) ||
+              (
+                'passwordMode' in incoming()
+                && 'appPasswordHash' in incoming()
+                && (
+                  (incoming().passwordMode in ['unset', 'none'] && incoming().appPasswordHash == '') ||
+                  (incoming().passwordMode == 'password' && incoming().appPasswordHash.matches('^v1:[a-f0-9]{16}:[a-f0-9]{64}$'))
+                )
+              )
+            )
           ) || (
             isOwner(userId)
             && existing().status in ['pending', 'rejected']
@@ -151,9 +162,9 @@ service cloud.firestore {
             ])
             && 'passwordMode' in incoming()
             && 'appPasswordHash' in incoming()
-            && incoming().passwordMode in ['none', 'password']
+            && incoming().passwordMode in ['unset', 'none', 'password']
             && (
-              (incoming().passwordMode == 'none' && incoming().appPasswordHash == '') ||
+              (incoming().passwordMode in ['unset', 'none'] && incoming().appPasswordHash == '') ||
               (incoming().passwordMode == 'password' && incoming().appPasswordHash.matches('^v1:[a-f0-9]{16}:[a-f0-9]{64}$'))
             )
           )

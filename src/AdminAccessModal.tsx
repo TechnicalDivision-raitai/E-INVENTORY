@@ -10,6 +10,7 @@ import {
   Search,
   Clock,
   RefreshCw,
+  KeyRound,
 } from 'lucide-react';
 import {
   AccessRequestDoc,
@@ -18,6 +19,7 @@ import {
   adminDeleteRequest,
   adminRejectRequest,
   adminRemoveBoundDevice,
+  adminResetUserPassword,
   adminRevokeRequest,
   parseDeviceLabels,
 } from './accessControl';
@@ -377,6 +379,26 @@ export const AdminAccessModal: React.FC<AdminAccessModalProps> = ({
                           >
                             <XCircle className="h-3.5 w-3.5" />
                             <span>ปฏิเสธ</span>
+                          </button>
+                        )}
+
+                        {req.status === 'approved' && req.passwordMode === 'password' && (
+                          <button
+                            type="button"
+                            className="btn-outline-emerald btn-sm"
+                            disabled={isBusy}
+                            onClick={() =>
+                              setConfirmState({
+                                uid: req.uid,
+                                title: 'ยืนยันรีเซ็ตรหัสผ่านเข้าระบบ',
+                                message: `ต้องการล้างรหัสผ่านส่วนตัวของคุณ ${req.fullName} (${req.email}) หรือไม่? เมื่อเปิดระบบครั้งถัดไป ระบบจะให้ผู้ใช้งานตั้งรหัสผ่านใหม่ได้เอง`,
+                                onConfirm: () =>
+                                  runAction(req.uid, () => adminResetUserPassword(req)),
+                              })
+                            }
+                          >
+                            <KeyRound className="h-3.5 w-3.5" />
+                            <span>รีเซ็ตรหัสผ่าน</span>
                           </button>
                         )}
 

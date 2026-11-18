@@ -1051,6 +1051,22 @@ export async function adminRemoveBoundDevice(req: AccessRequestDoc, idx: number)
   }
 }
 
+export async function adminResetUserPassword(req: AccessRequestDoc): Promise<void> {
+  const adminEmail = auth.currentUser?.email || OWNER_ADMIN_EMAIL;
+  const path = `access_requests/${req.uid}`;
+  try {
+    await updateDoc(doc(db, 'access_requests', req.uid), {
+      passwordMode: 'unset',
+      appPasswordHash: '',
+      reviewedBy: adminEmail.slice(0, 120),
+      reviewedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
 export async function adminDeleteRequest(uid: string): Promise<void> {
   const path = `access_requests/${uid}`;
   try {
