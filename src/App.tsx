@@ -67,6 +67,7 @@ import {
   submitAccessRequest,
   subscribeAllAccessRequests,
   subscribeAuthState,
+  syncMissingPasswordLockToFirestore,
   updateUserAppPasswordSetting,
   verifyAppPassword,
   verifyLocalLicenseCache,
@@ -2669,6 +2670,14 @@ export default function App() {
               preferredMode: docData.passwordMode,
               preferredHash: docData.appPasswordHash,
             });
+            if (
+              docData.passwordMode === undefined &&
+              (lockRes.mode === 'password' || lockRes.mode === 'none') &&
+              user.uid === docData.uid &&
+              navigator.onLine
+            ) {
+              void syncMissingPasswordLockToFirestore(docData.uid, lockRes.mode, lockRes.hash);
+            }
             const saved = await saveLocalLicenseCache({
               uid: docData.uid,
               email: docData.email,

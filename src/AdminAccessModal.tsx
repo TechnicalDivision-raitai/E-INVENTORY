@@ -201,6 +201,14 @@ export const AdminAccessModal: React.FC<AdminAccessModalProps> = ({
                 const isFull = boundIds.length >= maxDev;
                 const expiryVal = expiryDrafts[req.uid] ?? req.expiresAt ?? '';
                 const isBusy = busyUid === req.uid;
+                const pwStatusLabel =
+                  req.passwordMode === 'password'
+                    ? 'ตั้งรหัสผ่านแล้ว'
+                    : req.passwordMode === 'none'
+                    ? 'ไม่กำหนดรหัสผ่าน'
+                    : req.passwordMode === 'unset'
+                    ? 'รีเซ็ตแล้ว · รอตั้งรหัสใหม่'
+                    : 'ยังไม่ซิงก์สถานะในระบบกลาง';
 
                 return (
                   <div key={req.uid} className="admin-request-card">
@@ -382,23 +390,27 @@ export const AdminAccessModal: React.FC<AdminAccessModalProps> = ({
                           </button>
                         )}
 
-                        {req.status === 'approved' && req.passwordMode === 'password' && (
+                        {req.status === 'approved' && (
                           <button
                             type="button"
                             className="btn-outline-emerald btn-sm"
-                            disabled={isBusy}
+                            disabled={isBusy || req.passwordMode === 'unset'}
                             onClick={() =>
                               setConfirmState({
                                 uid: req.uid,
                                 title: 'ยืนยันรีเซ็ตรหัสผ่านเข้าระบบ',
-                                message: `ต้องการล้างรหัสผ่านส่วนตัวของคุณ ${req.fullName} (${req.email}) หรือไม่? เมื่อเปิดระบบครั้งถัดไป ระบบจะให้ผู้ใช้งานตั้งรหัสผ่านใหม่ได้เอง`,
+                                message: `ต้องการรีเซ็ต/ล้างรหัสผ่านเข้าระบบของคุณ ${req.fullName} (${req.email}) หรือไม่? เมื่อผู้ใช้งานเชื่อมต่ออินเทอร์เน็ตและเปิดระบบครั้งถัดไป ระบบจะล้างรหัสผ่านเดิมและให้ตั้งรหัสผ่านใหม่ได้เอง`,
                                 onConfirm: () =>
                                   runAction(req.uid, () => adminResetUserPassword(req)),
                               })
                             }
                           >
                             <KeyRound className="h-3.5 w-3.5" />
-                            <span>รีเซ็ตรหัสผ่าน</span>
+                            <span>
+                              {req.passwordMode === 'unset'
+                                ? 'รีเซ็ตแล้ว (รอตั้งใหม่)'
+                                : 'รีเซ็ตรหัสผ่าน'}
+                            </span>
                           </button>
                         )}
 
@@ -442,7 +454,10 @@ export const AdminAccessModal: React.FC<AdminAccessModalProps> = ({
                       </div>
                     </div>
 
-                    <div className="admin-req-meta">อัปเดตล่าสุด: {formatTs(req.updatedAt)}</div>
+                    <div className="admin-req-meta">
+                      อัปเดตล่าสุด: {formatTs(req.updatedAt)}
+                      {req.status === 'approved' ? ` · รหัสผ่านเข้าระบบ: ${pwStatusLabel}` : ''}
+                    </div>
                   </div>
                 );
               })}

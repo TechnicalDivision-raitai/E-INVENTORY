@@ -771,6 +771,25 @@ export async function updateUserAppPasswordSetting(params: {
   return savedLock;
 }
 
+export async function syncMissingPasswordLockToFirestore(
+  uid: string,
+  mode: 'none' | 'password',
+  appPasswordHash: string
+): Promise<void> {
+  if (!navigator.onLine || auth.currentUser?.uid !== uid) return;
+  const cleanHash = mode === 'password' ? appPasswordHash : '';
+  if (mode === 'password' && !/^v1:[a-f0-9]{16}:[a-f0-9]{64}$/.test(cleanHash)) return;
+  try {
+    await updateDoc(doc(db, 'access_requests', uid), {
+      passwordMode: mode,
+      appPasswordHash: cleanHash,
+      updatedAt: serverTimestamp(),
+    });
+  } catch {
+    // Non-fatal background sync
+  }
+}
+
 export async function fetchMyAccessRequest(uid: string): Promise<AccessRequestDoc | null> {
   const path = `access_requests/${uid}`;
   try {
