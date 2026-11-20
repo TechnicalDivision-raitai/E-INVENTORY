@@ -1987,41 +1987,51 @@ tr.open td {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 0 28px;
-  margin-top: 26px;
+  margin-top: 24px;
   break-inside: avoid;
 }
 
 .paper .slform .sl-sig-col {
   text-align: center;
-  line-height: 1.65;
+  line-height: 1.28;
   min-width: 0;
 }
 
 .paper .slform .sl-bot-appr {
   text-align: center;
-  line-height: 1.65;
-  margin: 28px auto 0;
+  line-height: 1.28;
+  margin: 24px auto 0;
   break-inside: avoid;
 }
 
+.paper .slform .sl-sig-col > div,
+.paper .slform .sl-bot-appr > div {
+  margin: 0;
+  padding: 0;
+}
+
+.paper .slform .sl-sig-col .dt,
+.paper .slform .sl-bot-appr .dt {
+  height: 0.9em;
+}
+
 .paper .slform .sl-sig-nm {
-  display: inline-block;
-  min-width: 8em;
+  display: inline;
+  padding: 0 2px;
 }
 
 .paper .slform .sl-sig-pos {
   display: inline-block;
   border-bottom: 1px dotted #000000;
-  padding: 0 8px 1px;
-  line-height: 1.22;
-  min-width: 9.5em;
+  padding: 0 4px 0;
+  line-height: 1.18;
+  min-width: 0;
   text-align: center;
 }
 
 .paper .slform .sl-sig-pos-plain {
-  display: inline-block;
-  padding-left: 14px;
-  text-align: left;
+  display: inline;
+  padding-left: 4px;
 }
 
 details.vshead {

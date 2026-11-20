@@ -1781,13 +1781,17 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       '</w:tr>';
     t += '</w:tbl>';
     b.push(t);
-    const sigName = (n: string) => P(R('(' + (n || '.'.repeat(30)) + ')'), { jc: 'center' });
-    const sigPosDot = (p: string) => P([R('ตำแหน่ง '), p ? R(p) : R('.'.repeat(28))], { jc: 'center' });
+    const Psig = (runs: any, before = 0) =>
+      `<w:p><w:pPr><w:spacing w:before="${before}" w:after="0" w:line="216" w:lineRule="auto"/><w:jc w:val="center"/></w:pPr>${[].concat(
+        runs
+      ).join('')}</w:p>`;
+    const sigName = (n: string) => Psig(R('(' + (n || '.'.repeat(30)) + ')'));
+    const sigPosDot = (p: string) => Psig([R('ตำแหน่ง '), p ? R(p) : R('.'.repeat(28))]);
     const leftCol = sigOn('req')
-      ? P(R('(ลงชื่อ)' + '.'.repeat(30) + 'ผู้เบิก'), { jc: 'center' }) + sigName(I.req.n) + sigPosDot(I.req.p)
+      ? Psig(R('(ลงชื่อ)' + '.'.repeat(30) + 'ผู้เบิก'), 160) + sigName(I.req.n) + sigPosDot(I.req.p)
       : '';
     const rightCol = sigOn('payer')
-      ? P(R('(ลงชื่อ)' + '.'.repeat(30) + 'ผู้จ่าย'), { jc: 'center' }) + sigName(I.payer.n) + sigPosDot(I.payer.p)
+      ? Psig(R('(ลงชื่อ)' + '.'.repeat(30) + 'ผู้จ่าย'), 160) + sigName(I.payer.n) + sigPosDot(I.payer.p)
       : '';
     const cols = [leftCol, rightCol].filter(Boolean);
     const SW = cols.length === 2 ? [4753, 4753] : [9506];
@@ -1802,9 +1806,9 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
         ).join('')}</w:tr></w:tbl>`
       );
     if (sigOn('appr')) {
-      b.push(P([R('(ลงชื่อ)' + '.'.repeat(32) + 'ผู้อนุมัติ')], { jc: 'center', before: 280 }));
+      b.push(Psig([R('(ลงชื่อ)' + '.'.repeat(32) + 'ผู้อนุมัติ')], 240));
       b.push(sigName(I.appr.n));
-      b.push(P([R('ตำแหน่ง   '), I.appr.p ? R(I.appr.p) : R('.'.repeat(28))], { jc: 'center' }));
+      b.push(sigPosDot(I.appr.p));
     }
     b.push(P(R('', { sz: 4 })));
     const doc = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${b.join(
@@ -1920,14 +1924,14 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
         ? `<div class="sl-sig-col">
             <div>(ลงชื่อ)${dt(10.5)}ผู้เบิก</div>
             <div>(${I.req.n ? `<span class="sl-sig-nm">${esc(I.req.n)}</span>` : dt(10.5)})</div>
-            <div>ตำแหน่ง <span class="sl-sig-pos">${I.req.p ? esc(I.req.p) : '&nbsp;'}</span></div>
+            <div>ตำแหน่ง ${I.req.p ? `<span class="sl-sig-pos">${esc(I.req.p)}</span>` : dt(10.5)}</div>
           </div>`
         : '',
       sigOn('payer')
         ? `<div class="sl-sig-col">
             <div>(ลงชื่อ)${dt(10.5)}ผู้จ่าย</div>
             <div>(${I.payer.n ? `<span class="sl-sig-nm">${esc(I.payer.n)}</span>` : dt(10.5)})</div>
-            <div>ตำแหน่ง <span class="sl-sig-pos">${I.payer.p ? esc(I.payer.p) : '&nbsp;'}</span></div>
+            <div>ตำแหน่ง ${I.payer.p ? `<span class="sl-sig-pos">${esc(I.payer.p)}</span>` : dt(10.5)}</div>
           </div>`
         : '',
     ].filter(Boolean);
