@@ -29,6 +29,7 @@ import {
   LogOut,
   KeyRound,
   Lock,
+  Unlock,
   Eye,
   EyeOff,
   Building2,
@@ -1829,48 +1830,49 @@ function KumWatsaduWorkspace({
                   )}
 
                   {pwPanelMode === 'idle' ? (
-                    <div className="repbar" style={{ margin: 0 }}>
+                    <div className="pw-settings-actions">
                       {passwordMode === 'password' ? (
                         <>
                           <button
                             type="button"
-                            className="btn"
+                            className="btn primary pw-action-btn"
                             onClick={() => {
                               setPwMsg('');
                               setPwErr('');
                               setPwPanelMode('change');
                             }}
                           >
-                            <KeyRound className="h-4 w-4" />
+                            <KeyRound className="h-4 w-4 shrink-0" />
                             <span>เปลี่ยนรหัสผ่าน</span>
+                          </button>
+                          <button type="button" className="btn pw-action-btn" onClick={onLockNow}>
+                            <Lock className="h-4 w-4 shrink-0" />
+                            <span>ล็อกหน้าจอตอนนี้</span>
                           </button>
                           <button
                             type="button"
-                            className="btn"
+                            className="btn danger pw-action-btn"
                             onClick={() => {
                               setPwMsg('');
                               setPwErr('');
                               setPwPanelMode('remove');
                             }}
                           >
+                            <Unlock className="h-4 w-4 shrink-0" />
                             <span>เอารหัสผ่านออก</span>
-                          </button>
-                          <button type="button" className="btn" onClick={onLockNow}>
-                            <Lock className="h-4 w-4" />
-                            <span>ล็อกหน้าจอตอนนี้</span>
                           </button>
                         </>
                       ) : (
                         <button
                           type="button"
-                          className="btn primary"
+                          className="btn primary pw-action-btn"
                           onClick={() => {
                             setPwMsg('');
                             setPwErr('');
                             setPwPanelMode('set');
                           }}
                         >
-                          <KeyRound className="h-4 w-4" />
+                          <KeyRound className="h-4 w-4 shrink-0" />
                           <span>ตั้งรหัสผ่านเข้าระบบส่วนตัว</span>
                         </button>
                       )}

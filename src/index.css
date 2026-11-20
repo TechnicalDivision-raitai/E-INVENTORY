@@ -838,6 +838,11 @@ header.mast {
 
 /* Buttons */
 .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  vertical-align: middle;
   font-family: var(--f-display);
   font-weight: 600;
   font-size: 0.88rem;
@@ -2895,14 +2900,22 @@ fieldset.cmt legend {
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
-  flex: 1 1 380px;
+  flex: 1 1 420px;
   min-width: 0;
 }
 
 .hist-filters {
   margin: 0 !important;
-  flex: 1 1 260px;
-  max-width: 460px;
+  flex: 1 1 320px;
+  max-width: 540px;
+}
+
+.hist-filters input {
+  flex: 1.6 1 220px;
+}
+
+.hist-filters select {
+  flex: 0 1 160px;
 }
 
 .hist-add-btn {
@@ -2915,13 +2928,14 @@ fieldset.cmt legend {
 }
 
 .hist-table {
-  table-layout: auto;
+  table-layout: fixed;
   width: 100%;
+  min-width: 880px;
 }
 
 .hist-table th,
 .hist-table td {
-  padding: 10px 12px;
+  padding: 12px 14px;
   vertical-align: middle;
 }
 
@@ -2930,60 +2944,104 @@ fieldset.cmt legend {
 .hist-table .col-val,
 .hist-table .col-act {
   white-space: nowrap;
-  width: 1%;
+}
+
+.hist-table .col-no,
+.hist-table .col-val {
+  font-variant-numeric: tabular-nums;
+}
+
+.hist-table .col-val {
+  padding-right: 22px;
 }
 
 .hist-table th.act-col,
 .hist-table td:last-child {
   text-align: right;
   white-space: nowrap;
-  width: 1%;
 }
 
-.hist-table .col-src {
-  min-width: 115px;
-  word-break: normal;
-  overflow-wrap: break-word;
-}
-
-.hist-table .col-party {
-  min-width: 140px;
-  word-break: normal;
-  overflow-wrap: break-word;
-}
-
-.hist-table .col-po {
-  min-width: 105px;
-  word-break: normal;
-  overflow-wrap: break-word;
-}
-
+.hist-table .col-src,
+.hist-table .col-party,
+.hist-table .col-po,
 .hist-table .col-work {
-  min-width: 185px;
   word-break: normal;
   overflow-wrap: break-word;
 }
 
-/* Compact Stacked Icon Buttons in History Action Column */
+/* Balanced Column Proportions: Receive History (7 cols) */
+.hist-table.hist-in .col-no {
+  width: 11%;
+}
+
+.hist-table.hist-in .col-date {
+  width: 12%;
+}
+
+.hist-table.hist-in .col-src {
+  width: 14%;
+}
+
+.hist-table.hist-in .col-party {
+  width: auto;
+}
+
+.hist-table.hist-in .col-po {
+  width: 15%;
+}
+
+.hist-table.hist-in .col-val {
+  width: 13%;
+}
+
+.hist-table.hist-in .col-act {
+  width: 112px;
+}
+
+/* Balanced Column Proportions: Requisition History (6 cols) */
+.hist-table.hist-out .col-no {
+  width: 12%;
+}
+
+.hist-table.hist-out .col-date {
+  width: 13%;
+}
+
+.hist-table.hist-out .col-party {
+  width: 23%;
+}
+
+.hist-table.hist-out .col-work {
+  width: auto;
+}
+
+.hist-table.hist-out .col-val {
+  width: 13%;
+}
+
+.hist-table.hist-out .col-act {
+  width: 186px;
+}
+
+/* Single-Row Icon Action Buttons in History Action Column */
 .rowact-stack {
-  display: inline-grid;
-  gap: 4px;
-  justify-items: end;
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
-.rowact-stack.cols-1 {
-  grid-template-columns: 32px;
-}
-
+.rowact-stack.cols-1,
 .rowact-stack.cols-2 {
-  grid-template-columns: repeat(2, 32px);
+  display: inline-flex;
 }
 
 .btn.icon-btn {
-  width: 32px;
-  height: 28px;
+  width: 34px;
+  height: 32px;
   padding: 0;
-  border-radius: 7px;
+  border-radius: 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -4631,6 +4689,19 @@ fieldset.cmt legend {
   background: var(--surface);
   border: 1px solid var(--line);
   color: var(--muted);
+}
+
+.pw-settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding-top: 2px;
+}
+
+.pw-action-btn {
+  min-height: 40px;
+  padding: 8px 16px;
 }
 
 .pw-settings-form {
