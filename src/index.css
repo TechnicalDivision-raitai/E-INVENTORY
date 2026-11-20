@@ -958,58 +958,150 @@ header.mast {
   white-space: nowrap;
 }
 
-/* Sticky header & column headers for Materials Master Registry table */
-.mat-list-card {
+/* Unified sticky header & column headers for all data table sections */
+.sticky-table-card {
   padding: 0;
   overflow: visible;
+  max-width: 100%;
+  min-width: 0;
 }
 
-.mat-list-card > .cardhead {
+.sticky-table-card > [data-sticky-card-head] {
   margin: 0;
   padding: 18px 24px 14px;
   background: var(--surface);
+  border-bottom: 1px solid var(--line);
   border-radius: calc(var(--r) - 1.5px) calc(var(--r) - 1.5px) 0 0;
   position: sticky;
   top: var(--topbar-h, 61px);
   z-index: 16;
 }
 
-.mat-list-card > .tablebox {
+.sticky-table-card > .tablebox {
   border: 0;
   border-radius: 0 0 calc(var(--r) - 1.5px) calc(var(--r) - 1.5px);
   overflow: visible;
+  max-width: 100%;
+  min-width: 0;
 }
 
-.mat-list-card > .tablebox table {
+.sticky-table-card > .tablebox table,
+.tablebox.sticky-table-only table {
   border-collapse: separate;
   border-spacing: 0;
 }
 
-.mat-list-card > .tablebox thead th {
+.sticky-table-card > .tablebox thead {
   position: sticky;
-  top: calc(var(--topbar-h, 61px) + var(--mat-cardhead-h, 58px));
+  top: calc(var(--topbar-h, 61px) + var(--sticky-head-h, 58px));
   z-index: 15;
+}
+
+.tablebox.sticky-table-only {
+  overflow: visible;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.tablebox.sticky-table-only thead {
+  position: sticky;
+  top: var(--topbar-h, 61px);
+  z-index: 15;
+}
+
+.sticky-table-card > .tablebox.is-hscroll {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: calc(100vh - var(--topbar-h, 61px) - var(--sticky-head-h, 58px) - 20px);
+}
+
+.tablebox.sticky-table-only.is-hscroll {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: calc(100vh - var(--topbar-h, 61px) - 20px);
+}
+
+.sticky-table-card > .tablebox.is-hscroll thead,
+.tablebox.sticky-table-only.is-hscroll thead {
+  top: 0;
+}
+
+.sticky-table-card > .tablebox thead th,
+.tablebox.sticky-table-only thead th {
   background: var(--sunk);
   border-bottom: 1px solid var(--line);
+}
+
+.sticky-table-card > .tablebox thead tr:last-child th,
+.tablebox.sticky-table-only thead tr:last-child th {
   box-shadow: 0 1px 0 var(--line);
 }
 
-.mat-list-card > .tablebox tbody tr:last-child td:first-child {
+.tablebox.sticky-table-only thead tr:first-child th:first-child {
+  border-top-left-radius: 11px;
+}
+
+.tablebox.sticky-table-only thead tr:first-child th:last-child {
+  border-top-right-radius: 11px;
+}
+
+.sticky-table-card > .tablebox tbody tr:last-child td:first-child,
+.sticky-table-card > .tablebox tfoot tr:last-child td:first-child {
   border-bottom-left-radius: calc(var(--r) - 1.5px);
 }
 
-.mat-list-card > .tablebox tbody tr:last-child td:last-child {
+.sticky-table-card > .tablebox tbody tr:last-child td:last-child,
+.sticky-table-card > .tablebox tfoot tr:last-child td:last-child {
   border-bottom-right-radius: calc(var(--r) - 1.5px);
 }
 
+.tablebox.sticky-table-only tbody tr:last-child td:first-child,
+.tablebox.sticky-table-only tfoot tr:last-child td:first-child {
+  border-bottom-left-radius: 11px;
+}
+
+.tablebox.sticky-table-only tbody tr:last-child td:last-child,
+.tablebox.sticky-table-only tfoot tr:last-child td:last-child {
+  border-bottom-right-radius: 11px;
+}
+
+@media (max-width: 1280px) {
+  .sticky-table-card > .tablebox th,
+  .sticky-table-card > .tablebox td,
+  .tablebox.sticky-table-only th,
+  .tablebox.sticky-table-only td {
+    padding: 10px 12px;
+  }
+}
+
 @media (max-width: 900px) {
-  .mat-list-card > .tablebox {
+  .sticky-table-card > .tablebox {
     overflow-x: auto;
     overflow-y: auto;
-    max-height: calc(100vh - var(--topbar-h, 61px) - var(--mat-cardhead-h, 58px) - 24px);
+    max-height: calc(100vh - var(--topbar-h, 61px) - var(--sticky-head-h, 58px) - 24px);
   }
-  .mat-list-card > .tablebox thead th {
+  .tablebox.sticky-table-only {
+    overflow-x: auto;
+    overflow-y: auto;
+    max-height: calc(100vh - var(--topbar-h, 61px) - 24px);
+  }
+  .sticky-table-card > .tablebox thead,
+  .tablebox.sticky-table-only thead {
     top: 0;
+  }
+}
+
+@media print {
+  .topbar,
+  .sticky-table-card > [data-sticky-card-head],
+  .sticky-table-card > .tablebox thead,
+  .tablebox.sticky-table-only thead {
+    position: static !important;
+  }
+  .sticky-table-card > .tablebox.is-hscroll,
+  .tablebox.sticky-table-only.is-hscroll {
+    overflow: visible !important;
+    max-height: none !important;
   }
 }
 

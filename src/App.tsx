@@ -341,27 +341,112 @@ function KumWatsaduWorkspace({
   useEffect(() => {
     const root = document.documentElement;
     const topbarEl = document.querySelector('.topbar') as HTMLElement | null;
-    const matHeadEl = document.getElementById('matListCardHead');
-    const updateStickyOffsets = () => {
+    const observedEls = new Set<HTMLElement>();
+
+    const measureHead = (headEl: HTMLElement) => {
+      const cardEl = headEl.closest('.sticky-table-card') as HTMLElement | null;
+      if (!cardEl) return;
+      const h = Math.floor(headEl.getBoundingClientRect().height);
+      if (h > 0) {
+        cardEl.style.setProperty('--sticky-head-h', `${h}px`);
+      }
+    };
+
+    const updateTableOverflow = (boxEl: HTMLElement) => {
+      const tableEl = boxEl.querySelector(':scope > table') as HTMLElement | null;
+      if (!tableEl) return;
+      const hostEl =
+        (boxEl.closest('.sticky-table-card') as HTMLElement | null) ||
+        (boxEl.parentElement as HTMLElement | null);
+      if (!hostEl) return;
+      const availW = Math.floor(hostEl.clientWidth);
+      if (availW <= 0) return;
+      const tableW = Math.ceil(tableEl.scrollWidth);
+      const needsScroll = tableW > availW + 1;
+      if (needsScroll !== boxEl.classList.contains('is-hscroll')) {
+        boxEl.classList.toggle('is-hscroll', needsScroll);
+      }
+    };
+
+    const updateAllStickyOffsets = () => {
       if (topbarEl) {
         const h = Math.floor(topbarEl.getBoundingClientRect().height);
         if (h > 0) root.style.setProperty('--topbar-h', `${h}px`);
       }
-      if (matHeadEl) {
-        const h = Math.floor(matHeadEl.getBoundingClientRect().height);
-        if (h > 0) root.style.setProperty('--mat-cardhead-h', `${h}px`);
+      document.querySelectorAll<HTMLElement>('[data-sticky-card-head]').forEach((headEl) => {
+        measureHead(headEl);
+      });
+      document
+        .querySelectorAll<HTMLElement>('.sticky-table-card > .tablebox, .tablebox.sticky-table-only')
+        .forEach((boxEl) => {
+          updateTableOverflow(boxEl);
+        });
+    };
+
+    const ro =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver((entries) => {
+            for (const entry of entries) {
+              const target = entry.target as HTMLElement;
+              if (target === topbarEl) {
+                const h = Math.floor(target.getBoundingClientRect().height);
+                if (h > 0) root.style.setProperty('--topbar-h', `${h}px`);
+              } else if (target.hasAttribute('data-sticky-card-head')) {
+                measureHead(target);
+              } else if (target.matches('.sticky-table-card > .tablebox, .tablebox.sticky-table-only')) {
+                updateTableOverflow(target);
+              } else if (target.tagName === 'TABLE') {
+                const box = target.parentElement as HTMLElement | null;
+                if (box && box.matches('.sticky-table-card > .tablebox, .tablebox.sticky-table-only')) {
+                  updateTableOverflow(box);
+                }
+              }
+            }
+          })
+        : null;
+
+    const observeEl = (el: HTMLElement) => {
+      if (!observedEls.has(el)) {
+        observedEls.add(el);
+        ro?.observe(el);
       }
     };
-    updateStickyOffsets();
-    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(updateStickyOffsets) : null;
-    if (ro) {
-      if (topbarEl) ro.observe(topbarEl);
-      if (matHeadEl) ro.observe(matHeadEl);
+
+    const syncObservedElements = () => {
+      document.querySelectorAll<HTMLElement>('[data-sticky-card-head]').forEach((headEl) => {
+        observeEl(headEl);
+        measureHead(headEl);
+      });
+      document
+        .querySelectorAll<HTMLElement>('.sticky-table-card > .tablebox, .tablebox.sticky-table-only')
+        .forEach((boxEl) => {
+          observeEl(boxEl);
+          const tbl = boxEl.querySelector(':scope > table') as HTMLElement | null;
+          if (tbl) observeEl(tbl);
+          updateTableOverflow(boxEl);
+        });
+    };
+
+    if (ro && topbarEl) ro.observe(topbarEl);
+    syncObservedElements();
+    updateAllStickyOffsets();
+
+    const repEl = document.getElementById('rep');
+    const mo =
+      typeof MutationObserver !== 'undefined' && repEl
+        ? new MutationObserver(() => {
+            syncObservedElements();
+          })
+        : null;
+    if (mo && repEl) {
+      mo.observe(repEl, { childList: true, subtree: true });
     }
-    window.addEventListener('resize', updateStickyOffsets);
+
+    window.addEventListener('resize', updateAllStickyOffsets);
     return () => {
       ro?.disconnect();
-      window.removeEventListener('resize', updateStickyOffsets);
+      mo?.disconnect();
+      window.removeEventListener('resize', updateAllStickyOffsets);
     };
   }, []);
 
@@ -1070,8 +1155,8 @@ function KumWatsaduWorkspace({
                 </div>
               </div>
 
-              <div className="stock-table-card card" id="stockListPanel" hidden>
-                <div className="sechead">
+              <div className="stock-table-card card sticky-table-card" id="stockListPanel" hidden>
+                <div className="sechead" data-sticky-card-head="1">
                   <div>
                     <h3>รายการวัสดุคงคลังทั้งหมด</h3>
                     <span className="sub" id="tCount"></span>
@@ -1100,8 +1185,8 @@ function KumWatsaduWorkspace({
           {/* รับเข้า */}
           <section id="view-in" hidden>
             <div className="stack">
-              <div className="card">
-                <div className="cardhead">
+              <div className="card sticky-table-card">
+                <div className="cardhead" data-sticky-card-head="1">
                   <h3>ประวัติและทะเบียนใบรับวัสดุ</h3>
                   <div className="hist-head-tools">
                     <div className="filters hist-filters">
@@ -1141,8 +1226,8 @@ function KumWatsaduWorkspace({
               <datalist id="peopleList"></datalist>
               <datalist id="posList"></datalist>
 
-              <div className="card">
-                <div className="cardhead">
+              <div className="card sticky-table-card">
+                <div className="cardhead" data-sticky-card-head="1">
                   <h3>ประวัติและทะเบียนใบเบิกวัสดุ</h3>
                   <div className="hist-head-tools">
                     <div className="filters hist-filters">
@@ -1381,8 +1466,8 @@ function KumWatsaduWorkspace({
                 </div>
               </div>
 
-              <div className="card mat-list-card">
-                <div className="cardhead" id="matListCardHead">
+              <div className="card sticky-table-card">
+                <div className="cardhead" id="matListCardHead" data-sticky-card-head="1">
                   <h3>รายการในทะเบียนวัสดุทั้งหมด</h3>
                   <span className="card-badge tabular-nums" id="matTotalCnt">
                     ทั้งหมด {materialCount.toLocaleString('th-TH')} รายการ
@@ -1588,7 +1673,7 @@ function KumWatsaduWorkspace({
                 </div>
               </div>
               <div className="kpis" id="cKpi"></div>
-              <div className="tablebox">
+              <div className="tablebox sticky-table-only">
                 <table className="ctab">
                   <thead>
                     <tr>

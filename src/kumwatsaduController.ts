@@ -5057,9 +5057,9 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       tot = r2(gs.reduce((t, g) => t + g.v, 0)),
       mx = Math.max(1, ...gs.map((g) => g.v)),
       gl = GRP[$('rGroup').value || 'req'];
-    box.innerHTML = `<div class="rephead"><h3>รายงานสรุปการเบิกวัสดุ แยกตาม${gl}</h3><div class="sub">${esc(
+    box.innerHTML = `<div class="card sticky-table-card"><div class="cardhead" data-sticky-card-head="1"><div><h3>รายงานสรุปการเบิกวัสดุ แยกตาม${gl}</h3><div class="sub">${esc(
       p.label
-    )} · ${gs.length} กลุ่ม · มูลค่าการเบิกรวม ${fmtB(tot)} บาท</div></div>
+    )} · ${gs.length} กลุ่ม · มูลค่าการเบิกรวม ${fmtB(tot)} บาท</div></div></div>
   <div class="tablebox"><table><thead><tr><th>${gl} / รายการวัสดุ</th><th>หน่วย</th><th class="num">ใบเบิก</th><th class="num">จำนวน</th><th class="num">มูลค่า (บาท)</th><th class="num">สัดส่วน</th></tr></thead>
   <tbody>${
     gs
@@ -5081,7 +5081,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       )
       .join('') || '<tr><td colspan="6" class="sub">ไม่มีการเบิกในช่วงนี้</td></tr>'
   }</tbody>
-  <tfoot><tr><td colspan="4">รวมมูลค่าการเบิก (บาท)</td><td class="num">${fmtB(tot)}</td><td></td></tr></tfoot></table></div>`;
+  <tfoot><tr><td colspan="4">รวมมูลค่าการเบิก (บาท)</td><td class="num">${fmtB(tot)}</td><td></td></tr></tfoot></table></div></div>`;
   }
   function issueXlsx(p: any, wb: any) {
     const gs = issueGroups(p),
@@ -5476,9 +5476,9 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
           (t, r) => ({ ov0: t.ov0 + r.ov0, iv: t.iv + r.iv, ov: t.ov + r.ov, cv: t.cv + r.cv }),
           { ov0: 0, iv: 0, ov: 0, cv: 0 }
         );
-      box.innerHTML = `<div class="rephead"><h3>รายงานสรุปการรับ-จ่ายวัสดุ</h3><div class="sub">${esc(
+      box.innerHTML = `<div class="card sticky-table-card"><div class="cardhead" data-sticky-card-head="1"><div><h3>รายงานสรุปการรับ-จ่ายวัสดุ</h3><div class="sub">${esc(
         p.label
-      )}</div></div>
+      )}</div></div></div>
     <div class="tablebox"><table><thead><tr class="grp"><th colspan="2"></th><th colspan="2">ยกมา</th><th colspan="2">รับ</th><th colspan="2">จ่าย</th><th colspan="2">คงเหลือ</th></tr>
     <tr><th>รายการ</th><th>หน่วย</th>${'<th class="num">จำนวน</th><th class="num">มูลค่า</th>'.repeat(4)}</tr></thead>
     <tbody>${rows
@@ -5496,7 +5496,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
       T.ov0
     )}</td><td></td><td class="num">${fmtB(T.iv)}</td><td></td><td class="num">${fmtB(
         T.ov
-      )}</td><td></td><td class="num">${fmtB(T.cv)}</td></tr></tfoot></table></div>`;
+      )}</td><td></td><td class="num">${fmtB(T.cv)}</td></tr></tfoot></table></div></div>`;
     } else {
       const mid = $('rMat').value;
       const ids =
