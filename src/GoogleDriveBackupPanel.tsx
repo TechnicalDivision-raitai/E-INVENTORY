@@ -6,6 +6,10 @@ import {
   deleteDriveBackup,
   downloadDriveBackup,
   DRIVE_BACKUP_FOLDER_NAME,
+  DRIVE_BACKUP_PREFIX,
+  DRIVE_DAILY_FILENAME_RE,
+  DRIVE_DAILY_KEEP_COUNT,
+  DRIVE_LATEST_FILENAME,
   DriveAuthExpiredError,
   DriveBackupFile,
   ensureDriveBackupFolder,
@@ -15,7 +19,9 @@ import {
   listDriveBackupFiles,
   logout,
   overwriteDriveBackup,
-  uploadNewDriveBackup,
+  pruneOldDailyDriveBackups,
+  sortDriveBackupFiles,
+  upsertDriveBackupFile,
 } from './googleDriveBackup';
 
 interface ParsedBackupSummary {
@@ -66,12 +72,16 @@ function formatThaiDateTime(iso?: string | null): string {
   );
 }
 
-function makeTimestampFilename(): string {
+function makeDailyFilename(): string {
   const d = new Date();
   const p = (n: number) => String(n).padStart(2, '0');
-  return `KumWatsadu-backup-${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}-${p(
-    d.getMinutes()
-  )}-${p(d.getSeconds())}.json`;
+  return `${DRIVE_BACKUP_PREFIX}${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}.json`;
+}
+
+function getBackupFileKindLabel(fileName: string): string {
+  if (fileName === DRIVE_LATEST_FILENAME) return 'ไฟล์ล่าสุด';
+  if (DRIVE_DAILY_FILENAME_RE.test(fileName)) return 'ประวัติรายวัน';
+  return 'ไฟล์สำรอง';
 }
 
 export function GoogleDriveBackupPanel() {
@@ -113,6 +123,8 @@ export function GoogleDriveBackupPanel() {
   const autoTimerRef = useRef<number | null>(null);
   const autoCheckedUidRef = useRef<string | null>(null);
   const prevEmailRef = useRef<string>(lastDriveEmail);
+  const backupInFlightRef = useRef<Promise<boolean> | null>(null);
+  const pendingAutoBackupRef = useRef<boolean>(false);
 
   const checkAutoRestoreOnConnect = useCallback(
     async (token: string, list: DriveBackupFile[], activeUser: User) => {
@@ -134,7 +146,20 @@ export function GoogleDriveBackupPanel() {
       }
 
       if (!list.length) return;
-      const latestFile = list.find((f) => /\.json$/i.test(f.name)) || list[0];
+      const jsonFiles = list.filter((f) => /\.json$/i.test(f.name));
+      const newestByTime = [...jsonFiles].sort((a, b) => {
+        const aMs = Date.parse(a.modifiedTime || a.createdTime || '') || 0;
+        const bMs = Date.parse(b.modifiedTime || b.createdTime || '') || 0;
+        return bMs - aMs;
+      })[0];
+      const latestNamed = jsonFiles.find((f) => f.name === DRIVE_LATEST_FILENAME);
+      const latestFile =
+        latestNamed &&
+        newestByTime &&
+        (Date.parse(latestNamed.modifiedTime || latestNamed.createdTime || '') || 0) >=
+          (Date.parse(newestByTime.modifiedTime || newestByTime.createdTime || '') || 0) - 5000
+          ? latestNamed
+          : newestByTime || list[0];
       if (!latestFile) return;
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -222,7 +247,7 @@ export function GoogleDriveBackupPanel() {
       try {
         const folder = await ensureDriveBackupFolder(token);
         setFolderId(folder.id);
-        const list = await listDriveBackupFiles(token, folder.id);
+        const list = sortDriveBackupFiles(await listDriveBackupFiles(token, folder.id));
         setFiles(list);
         setNeedsAuth(false);
         if (opts?.autoSyncOnConnect && opts.activeUser) {
@@ -322,67 +347,128 @@ export function GoogleDriveBackupPanel() {
     }
   };
 
-  const performBackupToNewFile = useCallback(
+  const performDriveBackup = useCallback(
     async (silent = false): Promise<boolean> => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const api = (window as any).kwBackupApi;
-      if (!api) return false;
-      const token = await getAccessToken();
-      if (!token) {
-        setNeedsAuth(true);
-        if (!silent) {
-          setStatusMsg({ text: 'กรุณากด Sign in with Google เพื่อเชื่อมต่อ Google Drive ก่อนสำรองข้อมูล', kind: 'warn' });
+      if (backupInFlightRef.current) {
+        if (silent) {
+          pendingAutoBackupRef.current = true;
+          return false;
         }
-        return false;
-      }
-      if (!api.hasData()) {
-        if (!silent) {
-          setStatusMsg({ text: 'ยังไม่มีข้อมูลวัสดุหรือใบรับ-ใบเบิกสำหรับสำรอง', kind: 'warn' });
-          api.notifyToast?.('ยังไม่มีข้อมูลให้สำรอง');
+        try {
+          await backupInFlightRef.current;
+        } catch {
+          // proceed with manual backup after previous run settles
         }
-        return false;
       }
 
-      if (!silent) setIsBusy(true);
-      try {
-        const fid = folderId || (await ensureDriveBackupFolder(token)).id;
-        setFolderId(fid);
-        const payload = api.getBackupJson();
-        const jsonText = JSON.stringify(payload, null, 1);
-        const fileName = makeTimestampFilename();
-        await uploadNewDriveBackup(token, fid, fileName, jsonText);
-        const nowIso = new Date().toISOString();
-        setLastDriveAt(nowIso);
-        if (user?.email) {
-          setLastDriveEmail(user.email);
-          prevEmailRef.current = user.email;
-        }
-        api.recordExternalBackup?.('drive', nowIso, user?.email || '');
-        lastSyncedSigRef.current = api.getDataSignature?.() || null;
-        if (!silent) {
-          setStatusMsg({
-            text: `บันทึกไฟล์ ${fileName} ลง Google Drive ของ ${user?.email || 'คุณ'} เรียบร้อยแล้ว`,
-            kind: 'ok',
-          });
-          api.notifyToast?.('สำรองข้อมูลลง Google Drive เรียบร้อยแล้ว');
-        }
-        const updatedList = await listDriveBackupFiles(token, fid);
-        setFiles(updatedList);
-        return true;
-      } catch (err) {
-        if (err instanceof DriveAuthExpiredError) {
-          clearAccessToken();
+      const run = async (): Promise<boolean> => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const api = (window as any).kwBackupApi;
+        if (!api) return false;
+        const token = await getAccessToken();
+        if (!token) {
           setNeedsAuth(true);
-          setStatusMsg({ text: err.message, kind: 'warn' });
-        } else if (!silent) {
-          setStatusMsg({
-            text: err instanceof Error ? err.message : 'สำรองข้อมูลไปยัง Google Drive ไม่สำเร็จ',
-            kind: 'err',
-          });
+          if (!silent) {
+            setStatusMsg({
+              text: 'กรุณากด Sign in with Google เพื่อเชื่อมต่อ Google Drive ก่อนสำรองข้อมูล',
+              kind: 'warn',
+            });
+          }
+          return false;
         }
-        return false;
+        if (!api.hasData()) {
+          if (!silent) {
+            setStatusMsg({ text: 'ยังไม่มีข้อมูลวัสดุหรือใบรับ-ใบเบิกสำหรับสำรอง', kind: 'warn' });
+            api.notifyToast?.('ยังไม่มีข้อมูลให้สำรอง');
+          }
+          return false;
+        }
+
+        if (!silent) setIsBusy(true);
+        try {
+          const fid = folderId || (await ensureDriveBackupFolder(token)).id;
+          setFolderId(fid);
+          const payload = api.getBackupJson();
+          const jsonText = JSON.stringify(payload, null, 1);
+          const dailyFileName = makeDailyFilename();
+
+          const existingFiles = await listDriveBackupFiles(token, fid);
+          const upsertedLatest = await upsertDriveBackupFile(
+            token,
+            fid,
+            DRIVE_LATEST_FILENAME,
+            jsonText,
+            existingFiles
+          );
+          const upsertedDaily = await upsertDriveBackupFile(token, fid, dailyFileName, jsonText, existingFiles);
+
+          // Combine current list with newly created/updated files before pruning daily history > 30 days
+          const mergedMap = new Map<string, DriveBackupFile>();
+          for (const f of existingFiles) mergedMap.set(f.id, f);
+          mergedMap.set(upsertedLatest.id, upsertedLatest);
+          mergedMap.set(upsertedDaily.id, upsertedDaily);
+          const prunedCount = await pruneOldDailyDriveBackups(
+            token,
+            Array.from(mergedMap.values()),
+            DRIVE_DAILY_KEEP_COUNT
+          );
+
+          const nowIso = new Date().toISOString();
+          setLastDriveAt(nowIso);
+          if (user?.email) {
+            setLastDriveEmail(user.email);
+            prevEmailRef.current = user.email;
+          }
+          api.recordExternalBackup?.('drive', nowIso, user?.email || '');
+          lastSyncedSigRef.current = api.getDataSignature?.() || null;
+
+          if (!silent) {
+            const pruneNote =
+              prunedCount > 0
+                ? ` · ลบไฟล์รายวันเก่าเกิน ${DRIVE_DAILY_KEEP_COUNT} วันออก ${prunedCount} ไฟล์`
+                : '';
+            setStatusMsg({
+              text: `อัปเดตไฟล์ล่าสุด (${DRIVE_LATEST_FILENAME}) และไฟล์ประจำวัน (${dailyFileName}) ลง Google Drive ของ ${user?.email || 'คุณ'} เรียบร้อยแล้ว${pruneNote}`,
+              kind: 'ok',
+            });
+            api.notifyToast?.('สำรองข้อมูลลง Google Drive เรียบร้อยแล้ว');
+          }
+
+          const updatedList = sortDriveBackupFiles(await listDriveBackupFiles(token, fid));
+          setFiles(updatedList);
+          return true;
+        } catch (err) {
+          if (err instanceof DriveAuthExpiredError) {
+            clearAccessToken();
+            setNeedsAuth(true);
+            setStatusMsg({ text: err.message, kind: 'warn' });
+          } else if (!silent) {
+            setStatusMsg({
+              text: err instanceof Error ? err.message : 'สำรองข้อมูลไปยัง Google Drive ไม่สำเร็จ',
+              kind: 'err',
+            });
+          }
+          return false;
+        } finally {
+          if (!silent) setIsBusy(false);
+        }
+      };
+
+      const promise = run();
+      backupInFlightRef.current = promise;
+      try {
+        return await promise;
       } finally {
-        if (!silent) setIsBusy(false);
+        if (backupInFlightRef.current === promise) {
+          backupInFlightRef.current = null;
+        }
+        if (pendingAutoBackupRef.current) {
+          pendingAutoBackupRef.current = false;
+          if (autoTimerRef.current) window.clearTimeout(autoTimerRef.current);
+          autoTimerRef.current = window.setTimeout(() => {
+            void performDriveBackup(true);
+          }, 1500);
+        }
       }
     },
     [folderId, user?.email]
@@ -394,13 +480,13 @@ export function GoogleDriveBackupPanel() {
     const win = window as any;
     win.kwDriveIsReady = !needsAuth && Boolean(user);
     win.kwDriveSyncNow = async (silentToast = false) => {
-      return await performBackupToNewFile(silentToast);
+      return await performDriveBackup(silentToast);
     };
     return () => {
       win.kwDriveIsReady = false;
       win.kwDriveSyncNow = undefined;
     };
-  }, [needsAuth, user, performBackupToNewFile]);
+  }, [needsAuth, user, performDriveBackup]);
 
   // Auto-backup on data changes when signed in & enabled
   useEffect(() => {
@@ -414,7 +500,7 @@ export function GoogleDriveBackupPanel() {
       if (sig && sig === lastSyncedSigRef.current) return;
       if (autoTimerRef.current) window.clearTimeout(autoTimerRef.current);
       autoTimerRef.current = window.setTimeout(() => {
-        void performBackupToNewFile(true);
+        void performDriveBackup(true);
       }, 4000);
     };
     window.addEventListener('kumwatsadu-data-changed', onDataChanged);
@@ -422,7 +508,7 @@ export function GoogleDriveBackupPanel() {
       window.removeEventListener('kumwatsadu-data-changed', onDataChanged);
       if (autoTimerRef.current) window.clearTimeout(autoTimerRef.current);
     };
-  }, [autoEnabled, needsAuth, performBackupToNewFile]);
+  }, [autoEnabled, needsAuth, performDriveBackup]);
 
   const toggleAutoEnabled = () => {
     const next = !autoEnabled;
@@ -434,7 +520,7 @@ export function GoogleDriveBackupPanel() {
     }
     setStatusMsg({
       text: next
-        ? 'เปิดสำรองข้อมูลอัตโนมัติลง Google Drive แล้ว (ทำงานเมื่อลงชื่อเข้าใช้ในเซสชันนี้)'
+        ? `เปิดสำรองอัตโนมัติแล้ว · ระบบจะเขียนทับ ${DRIVE_LATEST_FILENAME} และเก็บประวัติวันละ 1 ไฟล์ (สูงสุด ${DRIVE_DAILY_KEEP_COUNT} วัน)`
         : 'ปิดการสำรองอัตโนมัติลง Google Drive แล้ว',
       kind: next ? 'ok' : 'muted',
     });
@@ -561,7 +647,8 @@ export function GoogleDriveBackupPanel() {
           <div>
             <div className="gdrive-title">สำรองและกู้คืนข้อมูลบน Google Drive (ส่วนตัวตามบัญชีผู้ใช้)</div>
             <div className="sub">
-              ผู้ใช้งานแต่ละคนลงชื่อเข้าใช้ด้วยบัญชี Google ของตนเอง หากมีไฟล์ที่เคยสำรองไว้ระบบจะดึงข้อมูลเข้ามาให้อัตโนมัติ
+              เขียนทับไฟล์ล่าสุด ({DRIVE_LATEST_FILENAME}) และเก็บประวัติวันละ 1 ไฟล์ · ลบไฟล์รายวันที่เก่าเกิน{' '}
+              {DRIVE_DAILY_KEEP_COUNT} วันอัตโนมัติ
             </div>
           </div>
         </div>
@@ -647,7 +734,7 @@ export function GoogleDriveBackupPanel() {
               <button
                 type="button"
                 className="btn primary"
-                onClick={() => void performBackupToNewFile(false)}
+                onClick={() => void performDriveBackup(false)}
                 disabled={isBusy}
               >
                 <CloudUpload className="h-4 w-4" />
@@ -678,13 +765,18 @@ export function GoogleDriveBackupPanel() {
 
           <label className="gdrive-auto-toggle">
             <input type="checkbox" checked={autoEnabled} onChange={toggleAutoEnabled} />
-            <span>สำรองอัตโนมัติลง Google Drive ทุกครั้งที่มีการแก้ไขข้อมูล (เฉพาะระหว่างที่ลงชื่อเข้าใช้)</span>
+            <span>
+              สำรองอัตโนมัติลง Google Drive เมื่อแก้ไขข้อมูล (เขียนทับไฟล์ล่าสุด + เก็บประวัติรายวันสูงสุด{' '}
+              {DRIVE_DAILY_KEEP_COUNT} วัน)
+            </span>
           </label>
 
           <div className="gdrive-files-box">
             <div className="gdrive-files-head">
               <span>ไฟล์สำรองใน Google Drive ของคุณ ({files.length} ไฟล์)</span>
-              <span className="sub">บันทึกในโฟลเดอร์ “{DRIVE_BACKUP_FOLDER_NAME}”</span>
+              <span className="sub">
+                โฟลเดอร์ “{DRIVE_BACKUP_FOLDER_NAME}” · เก็บไฟล์ล่าสุด + ประวัติรายวัน {DRIVE_DAILY_KEEP_COUNT} วัน
+              </span>
             </div>
 
             {isLoadingFiles && files.length === 0 ? (
@@ -704,7 +796,8 @@ export function GoogleDriveBackupPanel() {
                           {f.name}
                         </div>
                         <div className="sub">
-                          แก้ไขเมื่อ {formatThaiDateTime(f.modifiedTime || f.createdTime)} · ขนาด {formatBytes(f.size)}
+                          {getBackupFileKindLabel(f.name)} · แก้ไขเมื่อ {formatThaiDateTime(f.modifiedTime || f.createdTime)}{' '}
+                          · ขนาด {formatBytes(f.size)}
                         </div>
                       </div>
                     </div>

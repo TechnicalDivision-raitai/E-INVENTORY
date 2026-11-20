@@ -4,6 +4,10 @@ import firebaseConfig from '../firebase-applet-config.json';
 
 export const SCOPES = ['https://www.googleapis.com/auth/drive.file'] as const;
 export const DRIVE_BACKUP_FOLDER_NAME = 'KumWatsadu Backups';
+export const DRIVE_BACKUP_PREFIX = 'KumWatsadu-backup-';
+export const DRIVE_LATEST_FILENAME = `${DRIVE_BACKUP_PREFIX}latest.json`;
+export const DRIVE_DAILY_KEEP_COUNT = 30;
+export const DRIVE_DAILY_FILENAME_RE = /^KumWatsadu-backup-(\d{4}-\d{2}-\d{2})\.json$/;
 
 const runtimeFirebaseConfig = {
   ...firebaseConfig,
@@ -138,10 +142,22 @@ export async function listDriveBackupFiles(accessToken: string, folderId: string
   const q = `'${folderId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`;
   const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(
     q
-  )}&orderBy=modifiedTime desc&pageSize=25&fields=files(id,name,size,modifiedTime,createdTime,webViewLink)`;
+  )}&orderBy=modifiedTime desc&pageSize=200&fields=files(id,name,size,modifiedTime,createdTime,webViewLink)`;
   const res = await driveFetch(url, accessToken);
   const data = await res.json();
   return Array.isArray(data.files) ? data.files : [];
+}
+
+export function sortDriveBackupFiles(files: DriveBackupFile[]): DriveBackupFile[] {
+  return [...files].sort((a, b) => {
+    const aLatest = a.name === DRIVE_LATEST_FILENAME ? 1 : 0;
+    const bLatest = b.name === DRIVE_LATEST_FILENAME ? 1 : 0;
+    if (aLatest !== bLatest) return bLatest - aLatest;
+    const aMs = Date.parse(a.modifiedTime || a.createdTime || '') || 0;
+    const bMs = Date.parse(b.modifiedTime || b.createdTime || '') || 0;
+    if (aMs !== bMs) return bMs - aMs;
+    return b.name.localeCompare(a.name);
+  });
 }
 
 export async function uploadNewDriveBackup(
@@ -200,6 +216,80 @@ export async function overwriteDriveBackup(
     }
   );
   return await res.json();
+}
+
+export async function upsertDriveBackupFile(
+  accessToken: string,
+  folderId: string,
+  fileName: string,
+  jsonContent: string,
+  existingFiles: DriveBackupFile[]
+): Promise<DriveBackupFile> {
+  const matches = existingFiles
+    .filter((f) => f.name === fileName)
+    .sort((a, b) => {
+      const aMs = Date.parse(a.modifiedTime || a.createdTime || '') || 0;
+      const bMs = Date.parse(b.modifiedTime || b.createdTime || '') || 0;
+      return bMs - aMs;
+    });
+
+  if (matches.length > 0) {
+    const updated = await overwriteDriveBackup(accessToken, matches[0].id, jsonContent);
+    // Clean up any accidental duplicate files with the exact same target name
+    for (const dup of matches.slice(1)) {
+      try {
+        await deleteDriveBackup(accessToken, dup.id);
+      } catch {
+        // ignore cleanup error
+      }
+    }
+    return updated;
+  }
+
+  return await uploadNewDriveBackup(accessToken, folderId, fileName, jsonContent);
+}
+
+export async function pruneOldDailyDriveBackups(
+  accessToken: string,
+  files: DriveBackupFile[],
+  keepCount: number = DRIVE_DAILY_KEEP_COUNT
+): Promise<number> {
+  const dailyFiles = files
+    .filter((f) => DRIVE_DAILY_FILENAME_RE.test(f.name))
+    .sort((a, b) => {
+      const nameDiff = b.name.localeCompare(a.name);
+      if (nameDiff !== 0) return nameDiff;
+      const aMs = Date.parse(a.modifiedTime || a.createdTime || '') || 0;
+      const bMs = Date.parse(b.modifiedTime || b.createdTime || '') || 0;
+      return bMs - aMs;
+    });
+
+  // Deduplicate by daily filename (keep newest per day) and keep at most `keepCount` distinct days
+  const keptDayNames = new Set<string>();
+  const toDelete: DriveBackupFile[] = [];
+
+  for (const file of dailyFiles) {
+    if (keptDayNames.has(file.name)) {
+      toDelete.push(file);
+      continue;
+    }
+    if (keptDayNames.size < keepCount) {
+      keptDayNames.add(file.name);
+    } else {
+      toDelete.push(file);
+    }
+  }
+
+  let deletedCount = 0;
+  for (const oldFile of toDelete) {
+    try {
+      await deleteDriveBackup(accessToken, oldFile.id);
+      deletedCount += 1;
+    } catch {
+      // ignore individual delete failures so backup remains resilient
+    }
+  }
+  return deletedCount;
 }
 
 export async function downloadDriveBackup(accessToken: string, fileId: string): Promise<string> {
