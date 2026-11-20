@@ -338,7 +338,7 @@ export function GoogleDriveBackupPanel() {
         if (opts?.syncAfterConnect && checkState !== 'conflict' && checkState !== 'restored') {
           return await performDriveBackup(true);
         }
-        if (checkState === 'local_newer' && autoEnabled) {
+        if ((checkState === 'local_newer' || checkState === 'empty') && autoEnabled) {
           await performDriveBackup(true);
         }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -480,6 +480,7 @@ export function GoogleDriveBackupPanel() {
           return true;
         } catch (err) {
           if (err instanceof DriveAuthExpiredError) {
+            autoCheckedUidRef.current = null;
             clearAccessToken();
             setNeedsAuth(true);
             setStatusMsg({ text: err.message, kind: 'warn' });

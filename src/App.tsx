@@ -338,6 +338,33 @@ function KumWatsaduWorkspace({
     bootKumWatsaduApp((cnt) => setMaterialCount(cnt));
   }, []);
 
+  useEffect(() => {
+    const root = document.documentElement;
+    const topbarEl = document.querySelector('.topbar') as HTMLElement | null;
+    const matHeadEl = document.getElementById('matListCardHead');
+    const updateStickyOffsets = () => {
+      if (topbarEl) {
+        const h = Math.floor(topbarEl.getBoundingClientRect().height);
+        if (h > 0) root.style.setProperty('--topbar-h', `${h}px`);
+      }
+      if (matHeadEl) {
+        const h = Math.floor(matHeadEl.getBoundingClientRect().height);
+        if (h > 0) root.style.setProperty('--mat-cardhead-h', `${h}px`);
+      }
+    };
+    updateStickyOffsets();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(updateStickyOffsets) : null;
+    if (ro) {
+      if (topbarEl) ro.observe(topbarEl);
+      if (matHeadEl) ro.observe(matHeadEl);
+    }
+    window.addEventListener('resize', updateStickyOffsets);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', updateStickyOffsets);
+    };
+  }, []);
+
   const handleFolderRestoreChoice = async (useFolderBackup: boolean) => {
     if (!folderConflict) return;
     setIsResolvingFolderConflict(true);
@@ -1354,8 +1381,8 @@ function KumWatsaduWorkspace({
                 </div>
               </div>
 
-              <div className="card">
-                <div className="cardhead">
+              <div className="card mat-list-card">
+                <div className="cardhead" id="matListCardHead">
                   <h3>รายการในทะเบียนวัสดุทั้งหมด</h3>
                   <span className="card-badge tabular-nums" id="matTotalCnt">
                     ทั้งหมด {materialCount.toLocaleString('th-TH')} รายการ
