@@ -1424,25 +1424,14 @@ function KumWatsaduWorkspace({
                     </button>
                   </div>
                 </div>
-                <p className="hint">
-                  แสดงเฉพาะวัสดุที่มียอดคงเหลือประจำกองตามที่ตั้งค่าไว้ โดยแยกรายการตามราคาทุนที่รับเข้าจริง (FIFO)
-                  ใช้ข้อมูลหน่วยงานและผู้ลงนามจากหน้า “ตั้งค่าข้อมูลหน่วยงาน”
-                </p>
-                <div className="repbar" style={{ marginBottom: 10 }}>
+                <div className="repbar" style={{ marginBottom: 0 }}>
                   <label htmlFor="vDate" className="sub">
                     ณ วันที่
                   </label>
                   <input id="vDate" type="date" style={{ width: 'auto' }} />
                   <span className="sub" id="vHeadSum"></span>
-                  <span className="sp"></span>
-                  <button type="button" className="btn" id="vSelfPrint">
-                    ตัวอย่างก่อนพิมพ์ / พิมพ์รายงาน
-                  </button>
-                  <button type="button" className="btn primary" id="vSelfXlsx">
-                    ส่งออก Excel (แบบ อปท.-วส.)
-                  </button>
                 </div>
-                <div className="notice" id="vMissingSet" hidden style={{ marginBottom: 0 }}></div>
+                <div className="notice" id="vMissingSet" hidden style={{ marginTop: 10, marginBottom: 0 }}></div>
               </div>
 
               <div className="vs-preview-wrap">
