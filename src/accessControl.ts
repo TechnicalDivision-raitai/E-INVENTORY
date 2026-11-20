@@ -25,6 +25,7 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
+import { SCOPES as DRIVE_SCOPES, setAccessToken as setDriveAccessToken } from './googleDriveBackup';
 
 export const OWNER_ADMIN_EMAIL = 'farsaicra@gmail.com';
 export const OFFLINE_GRACE_DAYS = 30;
@@ -52,6 +53,7 @@ void setPersistence(auth, browserLocalPersistence).catch(() => {});
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
 const accessProvider = new GoogleAuthProvider();
+DRIVE_SCOPES.forEach((scope) => accessProvider.addScope(scope));
 accessProvider.setCustomParameters({ prompt: 'select_account' });
 
 export enum OperationType {
@@ -691,11 +693,16 @@ export async function signInWithGoogleForAccess(): Promise<User> {
   }
   await idbDel(MANUAL_LOGOUT_STORAGE_KEY);
   const res = await signInWithPopup(auth, accessProvider);
+  const credential = GoogleAuthProvider.credentialFromResult(res);
+  if (credential?.accessToken) {
+    setDriveAccessToken(credential.accessToken);
+  }
   return res.user;
 }
 
 export async function signOutFromAccess(): Promise<void> {
   clearSessionUnlocked();
+  setDriveAccessToken(null);
   try {
     localStorage.setItem(MANUAL_LOGOUT_STORAGE_KEY, '1');
   } catch {

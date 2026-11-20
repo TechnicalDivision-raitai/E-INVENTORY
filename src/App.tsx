@@ -33,6 +33,7 @@ import {
   Eye,
   EyeOff,
   Building2,
+  Cloud,
 } from 'lucide-react';
 import { bootKumWatsaduApp, resetSessionTabToHome } from './kumwatsaduController';
 import { InstallAndPortableSection, TopbarPWAInstallButton } from './PWAInstallButton';
@@ -293,6 +294,44 @@ function KumWatsaduWorkspace({
       window.removeEventListener('kumwatsadu-lastbackup-change', syncLastBackup);
       window.removeEventListener('kumwatsadu-folder-backup-conflict', onFolderConflict);
     };
+  }, []);
+
+  const [driveState, setDriveState] = useState<{
+    ready: boolean;
+    hasHistory: boolean;
+    autoEnabled: boolean;
+    email: string;
+    connecting: boolean;
+  }>({
+    ready: false,
+    hasHistory: false,
+    autoEnabled: false,
+    email: '',
+    connecting: false,
+  });
+  const [driveBannerDismissed, setDriveBannerDismissed] = useState<boolean>(false);
+
+  useEffect(() => {
+    const applyState = (d: unknown) => {
+      if (d && typeof d === 'object') {
+        const stateObj = d as Record<string, unknown>;
+        setDriveState({
+          ready: Boolean(stateObj.ready),
+          hasHistory: Boolean(stateObj.hasHistory),
+          autoEnabled: Boolean(stateObj.autoEnabled),
+          email: String(stateObj.email || ''),
+          connecting: Boolean(stateObj.connecting),
+        });
+        if (stateObj.ready) {
+          setDriveBannerDismissed(false);
+        }
+      }
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    applyState((window as any).kwDriveState);
+    const onDriveState = (ev: Event) => applyState((ev as CustomEvent)?.detail);
+    window.addEventListener('kumwatsadu-drive-state', onDriveState);
+    return () => window.removeEventListener('kumwatsadu-drive-state', onDriveState);
   }, []);
 
   useEffect(() => {
@@ -797,6 +836,40 @@ function KumWatsaduWorkspace({
                 อนุญาตสำรองอัตโนมัติ
               </button>
             </div>
+
+            {!driveState.ready && driveState.hasHistory && !driveBannerDismissed && (
+              <div className="notice abbanner no-print" role="status">
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <Cloud className="h-4 w-4" aria-hidden="true" />
+                  <span>
+                    Google Drive{driveState.email ? ` (${driveState.email})` : ''} รอยืนยันสิทธิ์สำหรับรอบการใช้งานนี้
+                    {driveState.autoEnabled ? ' เพื่อสำรองข้อมูลอัตโนมัติ' : ''}
+                  </span>
+                </span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                  <button
+                    type="button"
+                    className="btn small primary"
+                    disabled={driveState.connecting}
+                    onClick={() => {
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      void (window as any).kwDriveConnect?.(false);
+                    }}
+                  >
+                    {driveState.connecting ? 'กำลังเชื่อมต่อ...' : 'เชื่อมต่อ Google Drive'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn small"
+                    onClick={() => setDriveBannerDismissed(true)}
+                    title="ซ่อนข้อความนี้ในรอบการใช้งานนี้"
+                    aria-label="ซ่อนข้อความเชื่อมต่อ Google Drive"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </span>
+              </div>
+            )}
 
             {/* วัสดุคงคลัง */}
             <section id="view-stock">

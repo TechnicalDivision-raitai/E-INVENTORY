@@ -6363,7 +6363,9 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     }
     async function syncNow() {
       const driveSync = (window as any).kwDriveSyncNow;
+      const driveConnect = (window as any).kwDriveConnect;
       const driveCanSync = typeof driveSync === 'function' && Boolean((window as any).kwDriveIsReady);
+      const driveHasHistory = Boolean((window as any).kwDriveHasHistory) && typeof driveConnect === 'function';
       let folderOk = false;
       let driveOk = false;
 
@@ -6372,7 +6374,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
         if (p !== 'granted') {
           state = 'ask';
           ui();
-          if (!driveCanSync) {
+          if (!driveCanSync && !driveHasHistory) {
             toast('กรุณาอนุญาตการเข้าถึงโฟลเดอร์เพื่อซิงค์ข้อมูล');
             return false;
           }
@@ -6384,9 +6386,11 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
 
       if (driveCanSync) {
         driveOk = await driveSync(true);
+      } else if (driveHasHistory) {
+        driveOk = await driveConnect(true);
       }
 
-      if (!dir && !driveCanSync) {
+      if (!dir && !driveCanSync && !driveHasHistory) {
         if (SUP) {
           await pick();
           return state === 'on';
@@ -6401,7 +6405,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
         toast('ซิงค์และสำรองข้อมูลลง Google Drive เรียบร้อยแล้ว');
       } else if (folderOk) {
         toast('ซิงค์และสำรองข้อมูลลงโฟลเดอร์เรียบร้อยแล้ว');
-      } else {
+      } else if (!driveHasHistory) {
         toast('ซิงค์ข้อมูลไม่สำเร็จ กรุณาลองอีกครั้ง');
       }
       return folderOk || driveOk;

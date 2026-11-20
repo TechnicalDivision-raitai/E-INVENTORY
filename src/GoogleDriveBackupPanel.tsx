@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { User } from 'firebase/auth';
 import { Cloud, CloudUpload, RefreshCw, RotateCcw, Trash2, LogOut, Folder, FileJson, ShieldAlert, Check, ChevronDown, ChevronUp } from 'lucide-react';
 import {
@@ -193,7 +194,7 @@ export function GoogleDriveBackupPanel() {
             text: `เชื่อมต่อบัญชี ${activeEmail || 'Google'} สำเร็จแล้ว (ข้อมูลในเครื่องตรงกับไฟล์สำรองล่าสุดบน Google Drive)`,
             kind: 'ok',
           });
-          return;
+          return 'same' as const;
         }
 
         if (!hasLocal || (!isDifferentUser && driveMs > localMs + 2000)) {
@@ -212,7 +213,11 @@ export function GoogleDriveBackupPanel() {
           api.notifyToast?.(
             `ดึงข้อมูลที่เคยสำรองไว้จาก Google Drive เข้าสู่ระบบอัตโนมัติแล้ว (${parsed.materials.length} วัสดุ, ${parsed.moves.length} เอกสาร)`
           );
-          return;
+          return 'restored' as const;
+        }
+
+        if (!isDifferentUser && hasLocal && localMs > driveMs + 2000) {
+          return 'local_newer' as const;
         }
 
         const localSummary = api.getCountsSummary?.() || { materials: 0, moves: 0, counts: 0 };
@@ -230,19 +235,24 @@ export function GoogleDriveBackupPanel() {
             exportedAt: parsed.exportedAt || latestFile.modifiedTime || '',
           },
         });
+        return 'conflict' as const;
       } catch (err) {
         console.warn('Auto-check Drive backup failed:', err);
+        return 'error' as const;
       }
     },
     []
   );
 
   const refreshFiles = useCallback(
-    async (tokenOverride?: string | null, opts?: { autoSyncOnConnect?: boolean; activeUser?: User | null }) => {
+    async (
+      tokenOverride?: string | null,
+      opts?: { autoSyncOnConnect?: boolean; activeUser?: User | null }
+    ): Promise<'restored' | 'same' | 'local_newer' | 'conflict' | 'empty' | 'error'> => {
       const token = tokenOverride ?? (await getAccessToken());
       if (!token) {
         setNeedsAuth(true);
-        return;
+        return 'error';
       }
       setIsLoadingFiles(true);
       try {
@@ -252,8 +262,10 @@ export function GoogleDriveBackupPanel() {
         setFiles(list);
         setNeedsAuth(false);
         if (opts?.autoSyncOnConnect && opts.activeUser) {
-          await checkAutoRestoreOnConnect(token, list, opts.activeUser);
+          const checkRes = await checkAutoRestoreOnConnect(token, list, opts.activeUser);
+          return checkRes || (list.length ? 'same' : 'empty');
         }
+        return list.length ? 'same' : 'empty';
       } catch (err) {
         if (err instanceof DriveAuthExpiredError) {
           setNeedsAuth(true);
@@ -264,6 +276,7 @@ export function GoogleDriveBackupPanel() {
             kind: 'err',
           });
         }
+        return 'error';
       } finally {
         setIsLoadingFiles(false);
       }
@@ -301,33 +314,60 @@ export function GoogleDriveBackupPanel() {
     return () => window.removeEventListener('kumwatsadu-snapshot-restored', onSnapshotRestored);
   }, []);
 
-  const handleLogin = async () => {
-    setIsLoggingIn(true);
-    setStatusMsg({ text: '', kind: 'muted' });
-    try {
-      const result = await googleSignIn();
-      if (result) {
+  const connectGoogleDrive = useCallback(
+    async (opts?: { selectAccount?: boolean; syncAfterConnect?: boolean }): Promise<boolean> => {
+      setIsLoggingIn(true);
+      setStatusMsg({ text: '', kind: 'muted' });
+      try {
+        const hintEmail = opts?.selectAccount ? undefined : lastDriveEmail || user?.email || undefined;
+        const result = await googleSignIn({
+          loginHint: hintEmail,
+          selectAccount: Boolean(opts?.selectAccount || !hintEmail),
+        });
+        if (!result) return false;
         setUser(result.user);
         setNeedsAuth(false);
         setStatusMsg({
           text: `เชื่อมต่อบัญชี ${result.user.email || result.user.displayName || 'Google'} สำเร็จแล้ว`,
           kind: 'ok',
         });
-        await refreshFiles(result.accessToken, { autoSyncOnConnect: true, activeUser: result.user });
-      }
-    } catch (err: unknown) {
-      const code = (err as { code?: string })?.code;
-      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
-        setStatusMsg({ text: 'ยกเลิกการเข้าสู่ระบบด้วยบัญชี Google', kind: 'muted' });
-      } else {
-        setStatusMsg({
-          text: err instanceof Error ? err.message : 'เข้าสู่ระบบ Google ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง',
-          kind: 'err',
+        const checkState = await refreshFiles(result.accessToken, {
+          autoSyncOnConnect: true,
+          activeUser: result.user,
         });
+        if (opts?.syncAfterConnect && checkState !== 'conflict' && checkState !== 'restored') {
+          return await performDriveBackup(true);
+        }
+        if (checkState === 'local_newer' && autoEnabled) {
+          await performDriveBackup(true);
+        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const api = (window as any).kwBackupApi;
+        if (checkState !== 'restored' && checkState !== 'conflict') {
+          api?.notifyToast?.(`เชื่อมต่อ Google Drive (${result.user.email || 'Google'}) เรียบร้อยแล้ว`);
+        }
+        return true;
+      } catch (err: unknown) {
+        const code = (err as { code?: string })?.code;
+        if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+          setStatusMsg({ text: 'ยกเลิกการเข้าสู่ระบบด้วยบัญชี Google', kind: 'muted' });
+        } else {
+          setStatusMsg({
+            text: err instanceof Error ? err.message : 'เข้าสู่ระบบ Google ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง',
+            kind: 'err',
+          });
+        }
+        return false;
+      } finally {
+        setIsLoggingIn(false);
       }
-    } finally {
-      setIsLoggingIn(false);
-    }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [lastDriveEmail, user?.email, refreshFiles, autoEnabled]
+  );
+
+  const handleLogin = async () => {
+    await connectGoogleDrive({ selectAccount: false, syncAfterConnect: false });
   };
 
   const handleLogout = async () => {
@@ -475,19 +515,37 @@ export function GoogleDriveBackupPanel() {
     [folderId, user?.email]
   );
 
-  // Register global sync callback for header backup indicator
+  // Register global sync & 1-click reconnect callbacks for topbar / banner
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const win = window as any;
-    win.kwDriveIsReady = !needsAuth && Boolean(user);
+    const ready = !needsAuth && Boolean(user);
+    const hasHistory = Boolean(lastDriveEmail || lastDriveAt || autoEnabled);
+    const email = user?.email || lastDriveEmail || '';
+    win.kwDriveIsReady = ready;
+    win.kwDriveHasHistory = hasHistory;
     win.kwDriveSyncNow = async (silentToast = false) => {
       return await performDriveBackup(silentToast);
     };
+    win.kwDriveConnect = async (syncAfterConnect = false) => {
+      return await connectGoogleDrive({ selectAccount: false, syncAfterConnect });
+    };
+    const detail = {
+      ready,
+      hasHistory,
+      autoEnabled,
+      email,
+      connecting: isLoggingIn,
+    };
+    win.kwDriveState = detail;
+    window.dispatchEvent(new CustomEvent('kumwatsadu-drive-state', { detail }));
     return () => {
       win.kwDriveIsReady = false;
+      win.kwDriveHasHistory = false;
       win.kwDriveSyncNow = undefined;
+      win.kwDriveConnect = undefined;
     };
-  }, [needsAuth, user, performDriveBackup]);
+  }, [needsAuth, user, lastDriveEmail, lastDriveAt, autoEnabled, isLoggingIn, performDriveBackup, connectGoogleDrive]);
 
   // Auto-backup on data changes when signed in & enabled
   useEffect(() => {
@@ -865,110 +923,113 @@ export function GoogleDriveBackupPanel() {
       ) : null}
 
       {/* Explicit Confirmation Modal for Mutating / Destructive Operations & Account-Switch Restore */}
-      {confirmAction ? (
-        <div
-          className="modal"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="gdConfirmTitle"
-          style={{ alignItems: 'center', justifyContent: 'center' }}
-        >
-          <div className="mv-detail-box" style={{ width: 'min(500px, 100%)' }}>
-            <div className="mv-detail-head">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <ShieldAlert
-                  className="h-5 w-5"
-                  style={{ color: confirmAction.type === 'delete' ? 'var(--bad)' : 'var(--warn)' }}
-                />
-                <div>
-                  <h3 id="gdConfirmTitle">
-                    {confirmAction.type === 'restore'
-                      ? confirmAction.isAutoPrompt
-                        ? confirmAction.isDifferentUser
-                          ? 'พบบัญชี Google Drive ใหม่ที่มีไฟล์สำรองอยู่'
-                          : 'พบไฟล์สำรองใน Google Drive ของคุณ'
-                        : 'ยืนยันการกู้คืนข้อมูลจาก Google Drive'
-                      : confirmAction.type === 'overwrite'
-                      ? 'ยืนยันการบันทึกทับไฟล์บน Google Drive'
-                      : 'ยืนยันการลบไฟล์สำรองจาก Google Drive'}
-                  </h3>
-                  <div className="sub">บัญชี: {user?.email || 'Google Drive ส่วนตัว'}</div>
-                </div>
-              </div>
-            </div>
-            <div className="mv-detail-body" style={{ gap: 10 }}>
-              <div className="mv-kv-grid" style={{ gridTemplateColumns: 'minmax(0, 1fr)' }}>
-                <div className="mv-kv">
-                  <span className="mv-kv-k">ชื่อไฟล์ใน Google Drive</span>
-                  <span className="mv-kv-v">{confirmAction.file.name}</span>
-                </div>
-                {confirmAction.type === 'restore' ? (
-                  <>
-                    <div className="mv-kv">
-                      <span className="mv-kv-k">วันที่สำรองข้อมูลใน Drive</span>
-                      <span className="mv-kv-v">{formatThaiDateTime(confirmAction.summary.exportedAt)}</span>
+      {confirmAction
+        ? createPortal(
+            <div
+              className="modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="gdConfirmTitle"
+              style={{ alignItems: 'center', justifyContent: 'center' }}
+            >
+              <div className="mv-detail-box" style={{ width: 'min(500px, 100%)' }}>
+                <div className="mv-detail-head">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <ShieldAlert
+                      className="h-5 w-5"
+                      style={{ color: confirmAction.type === 'delete' ? 'var(--bad)' : 'var(--warn)' }}
+                    />
+                    <div>
+                      <h3 id="gdConfirmTitle">
+                        {confirmAction.type === 'restore'
+                          ? confirmAction.isAutoPrompt
+                            ? confirmAction.isDifferentUser
+                              ? 'พบบัญชี Google Drive ใหม่ที่มีไฟล์สำรองอยู่'
+                              : 'พบไฟล์สำรองใน Google Drive ของคุณ'
+                            : 'ยืนยันการกู้คืนข้อมูลจาก Google Drive'
+                          : confirmAction.type === 'overwrite'
+                          ? 'ยืนยันการบันทึกทับไฟล์บน Google Drive'
+                          : 'ยืนยันการลบไฟล์สำรองจาก Google Drive'}
+                      </h3>
+                      <div className="sub">บัญชี: {user?.email || 'Google Drive ส่วนตัว'}</div>
                     </div>
+                  </div>
+                </div>
+                <div className="mv-detail-body" style={{ gap: 10 }}>
+                  <div className="mv-kv-grid" style={{ gridTemplateColumns: 'minmax(0, 1fr)' }}>
                     <div className="mv-kv">
-                      <span className="mv-kv-k">ข้อมูลในไฟล์สำรองบน Drive</span>
-                      <span className="mv-kv-v">
-                        วัสดุ {confirmAction.summary.materialsCount} รายการ · ใบรับ-ใบเบิก {confirmAction.summary.movesCount}{' '}
-                        ใบ · ตรวจนับ {confirmAction.summary.countsCount} ปีงบ
-                      </span>
+                      <span className="mv-kv-k">ชื่อไฟล์ใน Google Drive</span>
+                      <span className="mv-kv-v">{confirmAction.file.name}</span>
                     </div>
-                    {confirmAction.localSummary ? (
+                    {confirmAction.type === 'restore' ? (
+                      <>
+                        <div className="mv-kv">
+                          <span className="mv-kv-k">วันที่สำรองข้อมูลใน Drive</span>
+                          <span className="mv-kv-v">{formatThaiDateTime(confirmAction.summary.exportedAt)}</span>
+                        </div>
+                        <div className="mv-kv">
+                          <span className="mv-kv-k">ข้อมูลในไฟล์สำรองบน Drive</span>
+                          <span className="mv-kv-v">
+                            วัสดุ {confirmAction.summary.materialsCount} รายการ · ใบรับ-ใบเบิก{' '}
+                            {confirmAction.summary.movesCount} ใบ · ตรวจนับ {confirmAction.summary.countsCount} ปีงบ
+                          </span>
+                        </div>
+                        {confirmAction.localSummary ? (
+                          <div className="mv-kv">
+                            <span className="mv-kv-k">ข้อมูลที่มีอยู่ในเครื่องตอนนี้</span>
+                            <span className="mv-kv-v">
+                              วัสดุ {confirmAction.localSummary.materials} รายการ · ใบรับ-ใบเบิก{' '}
+                              {confirmAction.localSummary.moves} ใบ · ตรวจนับ {confirmAction.localSummary.counts} ปีงบ
+                            </span>
+                          </div>
+                        ) : null}
+                      </>
+                    ) : (
                       <div className="mv-kv">
-                        <span className="mv-kv-k">ข้อมูลที่มีอยู่ในเครื่องตอนนี้</span>
+                        <span className="mv-kv-k">แก้ไขล่าสุด</span>
                         <span className="mv-kv-v">
-                          วัสดุ {confirmAction.localSummary.materials} รายการ · ใบรับ-ใบเบิก{' '}
-                          {confirmAction.localSummary.moves} ใบ · ตรวจนับ {confirmAction.localSummary.counts} ปีงบ
+                          {formatThaiDateTime(confirmAction.file.modifiedTime || confirmAction.file.createdTime)}
                         </span>
                       </div>
-                    ) : null}
-                  </>
-                ) : (
-                  <div className="mv-kv">
-                    <span className="mv-kv-k">แก้ไขล่าสุด</span>
-                    <span className="mv-kv-v">
-                      {formatThaiDateTime(confirmAction.file.modifiedTime || confirmAction.file.createdTime)}
-                    </span>
+                    )}
                   </div>
-                )}
+                  <p className="sub" style={{ margin: 0, lineHeight: 1.5 }}>
+                    {confirmAction.type === 'restore'
+                      ? 'การดึงข้อมูลจาก Google Drive จะนำข้อมูลจากไฟล์สำรองนี้มาใช้งานแทนข้อมูลในเครื่องปัจจุบัน'
+                      : confirmAction.type === 'overwrite'
+                      ? 'เนื้อหาของไฟล์สำรองนี้บน Google Drive จะถูกเขียนทับด้วยข้อมูลล่าสุดจากเครื่องของคุณทันที'
+                      : 'ไฟล์สำรองนี้จะถูกลบออกจาก Google Drive ของคุณ และอาจไม่สามารถกู้คืนได้'}
+                  </p>
+                </div>
+                <div className="mv-detail-foot">
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => setConfirmAction(null)}
+                    disabled={isBusy}
+                  >
+                    {confirmAction.type === 'restore' && confirmAction.isAutoPrompt ? 'คงข้อมูลในเครื่องไว้' : 'ยกเลิก'}
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn ${confirmAction.type === 'delete' ? 'danger' : 'primary'}`}
+                    onClick={() => void executeConfirmedAction()}
+                    disabled={isBusy}
+                  >
+                    {isBusy
+                      ? 'กำลังดำเนินการ...'
+                      : confirmAction.type === 'restore'
+                      ? 'ดึงข้อมูลจาก Google Drive มาใช้งาน'
+                      : confirmAction.type === 'overwrite'
+                      ? 'ยืนยันบันทึกทับไฟล์'
+                      : 'ยืนยันลบไฟล์'}
+                  </button>
+                </div>
               </div>
-              <p className="sub" style={{ margin: 0, lineHeight: 1.5 }}>
-                {confirmAction.type === 'restore'
-                  ? 'การดึงข้อมูลจาก Google Drive จะนำข้อมูลจากไฟล์สำรองนี้มาใช้งานแทนข้อมูลในเครื่องปัจจุบัน'
-                  : confirmAction.type === 'overwrite'
-                  ? 'เนื้อหาของไฟล์สำรองนี้บน Google Drive จะถูกเขียนทับด้วยข้อมูลล่าสุดจากเครื่องของคุณทันที'
-                  : 'ไฟล์สำรองนี้จะถูกลบออกจาก Google Drive ของคุณ และอาจไม่สามารถกู้คืนได้'}
-              </p>
-            </div>
-            <div className="mv-detail-foot">
-              <button
-                type="button"
-                className="btn"
-                onClick={() => setConfirmAction(null)}
-                disabled={isBusy}
-              >
-                {confirmAction.type === 'restore' && confirmAction.isAutoPrompt ? 'คงข้อมูลในเครื่องไว้' : 'ยกเลิก'}
-              </button>
-              <button
-                type="button"
-                className={`btn ${confirmAction.type === 'delete' ? 'danger' : 'primary'}`}
-                onClick={() => void executeConfirmedAction()}
-                disabled={isBusy}
-              >
-                {isBusy
-                  ? 'กำลังดำเนินการ...'
-                  : confirmAction.type === 'restore'
-                  ? 'ดึงข้อมูลจาก Google Drive มาใช้งาน'
-                  : confirmAction.type === 'overwrite'
-                  ? 'ยืนยันบันทึกทับไฟล์'
-                  : 'ยืนยันลบไฟล์'}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }

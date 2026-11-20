@@ -19,14 +19,37 @@ const runtimeFirebaseConfig = {
 const app = getApps().length ? getApp() : initializeApp(runtimeFirebaseConfig);
 const auth = getAuth(app);
 
-const provider = new GoogleAuthProvider();
-SCOPES.forEach((scope) => provider.addScope(scope));
-provider.setCustomParameters({ prompt: 'select_account' });
+function buildDriveProvider(options?: { loginHint?: string; selectAccount?: boolean }): GoogleAuthProvider {
+  const p = new GoogleAuthProvider();
+  SCOPES.forEach((scope) => p.addScope(scope));
+  const params: Record<string, string> = {};
+  if (options?.loginHint) {
+    params.login_hint = options.loginHint;
+  }
+  if (options?.selectAccount || !options?.loginHint) {
+    params.prompt = 'select_account';
+  }
+  if (Object.keys(params).length > 0) {
+    p.setCustomParameters(params);
+  }
+  return p;
+}
 
 // Flag to indicate if we are in the middle of a sign-in flow.
 let isSigningIn = false;
 // Cache the access token STRICTLY in memory (never localStorage/sessionStorage).
 let cachedAccessToken: string | null = null;
+const tokenListeners = new Set<(token: string | null) => void>();
+
+function notifyTokenListeners(token: string | null) {
+  tokenListeners.forEach((fn) => {
+    try {
+      fn(token);
+    } catch {
+      // ignore listener errors
+    }
+  });
+}
 
 export interface DriveBackupFile {
   id: string;
@@ -48,7 +71,7 @@ export const initAuth = (
   onAuthSuccess?: (user: User, token: string) => void,
   onAuthFailure?: (user: User | null) => void
 ) => {
-  return onAuthStateChanged(auth, async (user: User | null) => {
+  const unsubAuth = onAuthStateChanged(auth, async (user: User | null) => {
     if (user) {
       if (cachedAccessToken) {
         onAuthSuccess?.(user, cachedAccessToken);
@@ -61,11 +84,25 @@ export const initAuth = (
       onAuthFailure?.(null);
     }
   });
+  const onTokenChange = (token: string | null) => {
+    if (token && auth.currentUser) {
+      onAuthSuccess?.(auth.currentUser, token);
+    }
+  };
+  tokenListeners.add(onTokenChange);
+  return () => {
+    unsubAuth();
+    tokenListeners.delete(onTokenChange);
+  };
 };
 
-export const googleSignIn = async (): Promise<{ user: User; accessToken: string } | null> => {
+export const googleSignIn = async (options?: {
+  loginHint?: string;
+  selectAccount?: boolean;
+}): Promise<{ user: User; accessToken: string } | null> => {
   try {
     isSigningIn = true;
+    const provider = buildDriveProvider(options);
     const result = await signInWithPopup(auth, provider);
     const credential = GoogleAuthProvider.credentialFromResult(result);
     if (!credential?.accessToken) {
@@ -81,16 +118,23 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
   }
 };
 
+export const setAccessToken = (token: string | null) => {
+  cachedAccessToken = token || null;
+  notifyTokenListeners(cachedAccessToken);
+};
+
 export const getAccessToken = async (): Promise<string | null> => {
   return cachedAccessToken;
 };
 
 export const clearAccessToken = () => {
   cachedAccessToken = null;
+  notifyTokenListeners(null);
 };
 
 export const logout = async () => {
   cachedAccessToken = null;
+  notifyTokenListeners(null);
   await auth.signOut();
 };
 
