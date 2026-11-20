@@ -34,7 +34,7 @@ import {
   EyeOff,
   Building2,
 } from 'lucide-react';
-import { bootKumWatsaduApp } from './kumwatsaduController';
+import { bootKumWatsaduApp, resetSessionTabToHome } from './kumwatsaduController';
 import { InstallAndPortableSection, TopbarPWAInstallButton } from './PWAInstallButton';
 import { GoogleDriveBackupPanel } from './GoogleDriveBackupPanel';
 import { AccessGate, GateReason } from './AccessGate';
@@ -2564,6 +2564,12 @@ export default function App() {
     return unsub;
   }, []);
 
+  useEffect(() => {
+    if (!authorized && gateReason !== 'loading') {
+      resetSessionTabToHome();
+    }
+  }, [authorized, gateReason]);
+
   const evaluateAccess = useCallback(
     async (silent = false) => {
       if (!deviceId) return;
@@ -2919,6 +2925,7 @@ export default function App() {
     setBusy(true);
     setErrorMsg('');
     try {
+      resetSessionTabToHome();
       await signInWithGoogleForAccess();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'เข้าสู่ระบบไม่สำเร็จ';
@@ -2934,6 +2941,7 @@ export default function App() {
     setBusy(true);
     setErrorMsg('');
     try {
+      resetSessionTabToHome();
       await signOutFromAccess();
       setCachedLicense(null);
       setAuthorized(false);
@@ -2997,6 +3005,7 @@ export default function App() {
       setCachedLicense((prev) =>
         prev ? { ...prev, passwordMode: 'none', appPasswordHash: '' } : prev
       );
+      resetSessionTabToHome();
       setAuthorized(true);
       wasAuthorizedRef.current = true;
     } catch (err) {
@@ -3037,6 +3046,7 @@ export default function App() {
             }
           : prev
       );
+      resetSessionTabToHome();
       setAuthorized(true);
       wasAuthorizedRef.current = true;
     } catch (err) {
@@ -3061,6 +3071,7 @@ export default function App() {
       }
       const ok = await verifyAppPassword(activeUid, password, hashToCheck);
       if (!ok) return false;
+      resetSessionTabToHome();
       markSessionUnlocked(activeUid);
       setAuthorized(true);
       wasAuthorizedRef.current = true;
@@ -3099,6 +3110,7 @@ export default function App() {
         prev ? { ...prev, passwordMode: adminFlag ? 'none' : 'unset', appPasswordHash: '' } : prev
       );
       if (adminFlag) {
+        resetSessionTabToHome();
         setAuthorized(true);
         wasAuthorizedRef.current = true;
       } else {
@@ -3179,6 +3191,7 @@ export default function App() {
   };
 
   const handleLockNow = () => {
+    resetSessionTabToHome();
     clearSessionUnlocked();
     window.location.reload();
   };

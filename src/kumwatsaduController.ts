@@ -1,6 +1,20 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { initMiniLibsAndDb } from './kumwatsaduRuntime';
 
+const SESSION_ACTIVE_TAB_KEY = 'kumwatsadu-active-tab-v1';
+const SESSION_STOCK_SUBTAB_KEY = 'kumwatsadu-stock-subtab-v1';
+
+export function resetSessionTabToHome() {
+  try {
+    sessionStorage.removeItem(SESSION_ACTIVE_TAB_KEY);
+    sessionStorage.removeItem(SESSION_STOCK_SUBTAB_KEY);
+    localStorage.removeItem(SESSION_ACTIVE_TAB_KEY);
+    localStorage.removeItem(SESSION_STOCK_SUBTAB_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
   if ((window as any).__kumwatsadu_app_booted) return;
   (window as any).__kumwatsadu_app_booted = true;
@@ -182,8 +196,6 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
     refreshCntFy();
   }
 
-  const ACTIVE_TAB_KEY = 'kumwatsadu-active-tab-v1';
-  const STOCK_SUBTAB_KEY = 'kumwatsadu-stock-subtab-v1';
   const REP_KIND_KEY = 'kumwatsadu-report-kind-v1';
 
   let L = new Map<string, any[]>();
@@ -527,7 +539,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
   function showTab(t: string) {
     if (!TAB_META[t]) t = 'stock';
     try {
-      localStorage.setItem(ACTIVE_TAB_KEY, t);
+      sessionStorage.setItem(SESSION_ACTIVE_TAB_KEY, t);
     } catch {
       // ignore
     }
@@ -834,7 +846,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
 
   let stockSubTab: 'dash' | 'list' = (() => {
     try {
-      return localStorage.getItem(STOCK_SUBTAB_KEY) === 'list' ? 'list' : 'dash';
+      return sessionStorage.getItem(SESSION_STOCK_SUBTAB_KEY) === 'list' ? 'list' : 'dash';
     } catch {
       return 'dash';
     }
@@ -842,7 +854,7 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
   function setStockSubTab(tab: 'dash' | 'list') {
     stockSubTab = tab;
     try {
-      localStorage.setItem(STOCK_SUBTAB_KEY, tab);
+      sessionStorage.setItem(SESSION_STOCK_SUBTAB_KEY, tab);
     } catch {
       // ignore
     }
@@ -5954,13 +5966,21 @@ export function bootKumWatsaduApp(onMaterialsChange?: (count: number) => void) {
   setRepSeg();
   setStockSubTab(stockSubTab);
   try {
-    const savedTab = localStorage.getItem(ACTIVE_TAB_KEY);
+    localStorage.removeItem(SESSION_ACTIVE_TAB_KEY);
+    localStorage.removeItem(SESSION_STOCK_SUBTAB_KEY);
+  } catch {
+    // ignore
+  }
+  let initialTab = 'stock';
+  try {
+    const savedTab = sessionStorage.getItem(SESSION_ACTIVE_TAB_KEY);
     if (savedTab && TAB_META[savedTab]) {
-      showTab(savedTab);
+      initialTab = savedTab;
     }
   } catch {
     // ignore
   }
+  showTab(initialTab);
   renderAll();
 
   let isRestoringSnapshot = false;
