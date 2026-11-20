@@ -3734,6 +3734,41 @@ fieldset.cmt legend {
   color: var(--fg);
 }
 
+.gdrive-files-toggle {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.gdrive-files-toggle:hover {
+  background: var(--accent-soft, #eef6f2);
+}
+
+.gdrive-files-toggle.open {
+  border-bottom-color: var(--line);
+}
+
+.gdrive-files-head-left {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+.gdrive-files-toggle-lbl {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
 .gdrive-empty {
   padding: 16px 14px;
   font-size: 0.86rem;

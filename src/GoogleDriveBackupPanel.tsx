@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { User } from 'firebase/auth';
-import { Cloud, CloudUpload, RefreshCw, RotateCcw, Trash2, LogOut, Folder, FileJson, ShieldAlert, Check } from 'lucide-react';
+import { Cloud, CloudUpload, RefreshCw, RotateCcw, Trash2, LogOut, Folder, FileJson, ShieldAlert, Check, ChevronDown, ChevronUp } from 'lucide-react';
 import {
   clearAccessToken,
   deleteDriveBackup,
@@ -118,6 +118,7 @@ export function GoogleDriveBackupPanel() {
     }
   });
   const [confirmAction, setConfirmAction] = useState<ConfirmActionState>(null);
+  const [showFilesList, setShowFilesList] = useState<boolean>(false);
 
   const lastSyncedSigRef = useRef<string | null>(null);
   const autoTimerRef = useRef<number | null>(null);
@@ -772,71 +773,84 @@ export function GoogleDriveBackupPanel() {
           </label>
 
           <div className="gdrive-files-box">
-            <div className="gdrive-files-head">
-              <span>ไฟล์สำรองใน Google Drive ของคุณ ({files.length} ไฟล์)</span>
-              <span className="sub">
-                โฟลเดอร์ “{DRIVE_BACKUP_FOLDER_NAME}” · เก็บไฟล์ล่าสุด + ประวัติรายวัน {DRIVE_DAILY_KEEP_COUNT} วัน
+            <button
+              type="button"
+              className={`gdrive-files-head gdrive-files-toggle${showFilesList ? ' open' : ''}`}
+              onClick={() => setShowFilesList((prev) => !prev)}
+              aria-expanded={showFilesList}
+            >
+              <span className="gdrive-files-head-left">
+                <span>ไฟล์สำรองใน Google Drive ของคุณ ({files.length} ไฟล์)</span>
+                <span className="sub">
+                  โฟลเดอร์ “{DRIVE_BACKUP_FOLDER_NAME}” · เก็บไฟล์ล่าสุด + ประวัติรายวัน {DRIVE_DAILY_KEEP_COUNT} วัน
+                </span>
               </span>
-            </div>
+              <span className="gdrive-files-toggle-lbl">
+                <span>{showFilesList ? 'ซ่อนรายการ' : 'แสดงรายการ'}</span>
+                {showFilesList ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </span>
+            </button>
 
-            {isLoadingFiles && files.length === 0 ? (
-              <div className="gdrive-empty">กำลังโหลดรายการไฟล์สำรองจาก Google Drive...</div>
-            ) : files.length === 0 ? (
-              <div className="gdrive-empty">
-                ยังไม่มีไฟล์สำรองใน Google Drive ของบัญชีนี้ · กดปุ่ม “สำรองไปยัง Google Drive เดี๋ยวนี้” เพื่อสร้างไฟล์แรก
-              </div>
-            ) : (
-              <div className="gdrive-file-list">
-                {files.map((f) => (
-                  <div className="gdrive-file-row" key={f.id}>
-                    <div className="gdrive-file-main">
-                      <FileJson className="h-4 w-4 gdrive-file-ic" />
-                      <div className="gdrive-file-text">
-                        <div className="gdrive-file-name" title={f.name}>
-                          {f.name}
-                        </div>
-                        <div className="sub">
-                          {getBackupFileKindLabel(f.name)} · แก้ไขเมื่อ {formatThaiDateTime(f.modifiedTime || f.createdTime)}{' '}
-                          · ขนาด {formatBytes(f.size)}
+            {showFilesList ? (
+              isLoadingFiles && files.length === 0 ? (
+                <div className="gdrive-empty">กำลังโหลดรายการไฟล์สำรองจาก Google Drive...</div>
+              ) : files.length === 0 ? (
+                <div className="gdrive-empty">
+                  ยังไม่มีไฟล์สำรองใน Google Drive ของบัญชีนี้ · กดปุ่ม “สำรองไปยัง Google Drive เดี๋ยวนี้” เพื่อสร้างไฟล์แรก
+                </div>
+              ) : (
+                <div className="gdrive-file-list">
+                  {files.map((f) => (
+                    <div className="gdrive-file-row" key={f.id}>
+                      <div className="gdrive-file-main">
+                        <FileJson className="h-4 w-4 gdrive-file-ic" />
+                        <div className="gdrive-file-text">
+                          <div className="gdrive-file-name" title={f.name}>
+                            {f.name}
+                          </div>
+                          <div className="sub">
+                            {getBackupFileKindLabel(f.name)} · แก้ไขเมื่อ{' '}
+                            {formatThaiDateTime(f.modifiedTime || f.createdTime)} · ขนาด {formatBytes(f.size)}
+                          </div>
                         </div>
                       </div>
+                      <div className="gdrive-file-acts">
+                        <button
+                          type="button"
+                          className="btn small"
+                          onClick={() => void prepareRestoreFromDrive(f)}
+                          disabled={isBusy}
+                          title="กู้คืนข้อมูลจากไฟล์สำรองนี้ลงในเครื่อง"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" />
+                          <span>กู้คืน</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="btn small"
+                          onClick={() => setConfirmAction({ type: 'overwrite', file: f })}
+                          disabled={isBusy}
+                          title="บันทึกข้อมูลปัจจุบันทับไฟล์นี้ใน Google Drive"
+                        >
+                          <CloudUpload className="h-3.5 w-3.5" />
+                          <span>บันทึกทับ</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="btn small danger"
+                          onClick={() => setConfirmAction({ type: 'delete', file: f })}
+                          disabled={isBusy}
+                          title="ลบไฟล์สำรองนี้ออกจาก Google Drive"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          <span>ลบ</span>
+                        </button>
+                      </div>
                     </div>
-                    <div className="gdrive-file-acts">
-                      <button
-                        type="button"
-                        className="btn small"
-                        onClick={() => void prepareRestoreFromDrive(f)}
-                        disabled={isBusy}
-                        title="กู้คืนข้อมูลจากไฟล์สำรองนี้ลงในเครื่อง"
-                      >
-                        <RotateCcw className="h-3.5 w-3.5" />
-                        <span>กู้คืน</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="btn small"
-                        onClick={() => setConfirmAction({ type: 'overwrite', file: f })}
-                        disabled={isBusy}
-                        title="บันทึกข้อมูลปัจจุบันทับไฟล์นี้ใน Google Drive"
-                      >
-                        <CloudUpload className="h-3.5 w-3.5" />
-                        <span>บันทึกทับ</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="btn small danger"
-                        onClick={() => setConfirmAction({ type: 'delete', file: f })}
-                        disabled={isBusy}
-                        title="ลบไฟล์สำรองนี้ออกจาก Google Drive"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        <span>ลบ</span>
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              )
+            ) : null}
           </div>
         </div>
       )}
