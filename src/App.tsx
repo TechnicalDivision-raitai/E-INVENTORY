@@ -38,6 +38,7 @@ import {
 import { bootKumWatsaduApp, resetSessionTabToHome } from './kumwatsaduController';
 import { InstallAndPortableSection, TopbarPWAInstallButton } from './PWAInstallButton';
 import { GoogleDriveBackupPanel } from './GoogleDriveBackupPanel';
+import { getDriveBackupPref } from './googleDriveBackup';
 import { AccessGate, GateReason } from './AccessGate';
 import { AdminAccessModal } from './AdminAccessModal';
 import {
@@ -958,7 +959,7 @@ function KumWatsaduWorkspace({
                     {driveState.autoEnabled ? ' เพื่อสำรองข้อมูลอัตโนมัติ' : ''}
                   </span>
                 </span>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0, flexWrap: 'wrap' }}>
                   <button
                     type="button"
                     className="btn small primary"
@@ -969,6 +970,18 @@ function KumWatsaduWorkspace({
                     }}
                   >
                     {driveState.connecting ? 'กำลังเชื่อมต่อ...' : 'เชื่อมต่อ Google Drive'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn small"
+                    disabled={driveState.connecting}
+                    onClick={() => {
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      (window as any).kwDriveDisable?.();
+                    }}
+                    title="ปิดการใช้งานและการแจ้งเตือน Google Drive ถาวร (เปิดใหม่ได้ในหน้าตั้งค่า)"
+                  >
+                    ไม่ใช้ Drive
                   </button>
                   <button
                     type="button"
@@ -3106,12 +3119,12 @@ export default function App() {
 
   const activeUid = user?.uid || cachedLicense?.uid || accessDoc?.uid || '';
 
-  const handleSignIn = async () => {
+  const handleSignIn = async (options?: { includeDriveScope?: boolean }) => {
     setBusy(true);
     setErrorMsg('');
     try {
       resetSessionTabToHome();
-      await signInWithGoogleForAccess();
+      await signInWithGoogleForAccess(options);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'เข้าสู่ระบบไม่สำเร็จ';
       if (!msg.includes('popup-closed-by-user')) {
@@ -3274,7 +3287,9 @@ export default function App() {
     setBusy(true);
     setErrorMsg('');
     try {
-      const signedUser = await signInWithGoogleForAccess();
+      const signedUser = await signInWithGoogleForAccess({
+        includeDriveScope: getDriveBackupPref() === 'enabled',
+      });
       const targetUid = activeUid || signedUser.uid;
       if (signedUser.uid !== targetUid) {
         // Switched to another Google account; evaluateAccess will handle it automatically
@@ -3431,7 +3446,7 @@ export default function App() {
         onOpenAdmin={() => setAdminModalOpen(true)}
         onRecheckAccess={async () => {
           if (!user && navigator.onLine) {
-            await handleSignIn();
+            await handleSignIn({ includeDriveScope: getDriveBackupPref() === 'enabled' });
           }
           await evaluateAccess(false);
           // eslint-disable-next-line @typescript-eslint/no-explicit-any

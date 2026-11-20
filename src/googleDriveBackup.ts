@@ -9,6 +9,31 @@ export const DRIVE_LATEST_FILENAME = `${DRIVE_BACKUP_PREFIX}latest.json`;
 export const DRIVE_DAILY_KEEP_COUNT = 30;
 export const DRIVE_DAILY_FILENAME_RE = /^KumWatsadu-backup-(\d{4}-\d{2}-\d{2})\.json$/;
 
+export type DriveBackupPref = 'enabled' | 'disabled' | 'unset';
+export const DRIVE_PREF_KEY = 'kumwatsadu-db-v1:driveBackupPref';
+
+export function getDriveBackupPref(): DriveBackupPref {
+  try {
+    const v = localStorage.getItem(DRIVE_PREF_KEY);
+    if (v === 'enabled' || v === 'disabled') return v;
+  } catch {
+    // ignore storage errors
+  }
+  return 'unset';
+}
+
+export function setDriveBackupPref(pref: DriveBackupPref): void {
+  try {
+    if (pref === 'unset') {
+      localStorage.removeItem(DRIVE_PREF_KEY);
+    } else {
+      localStorage.setItem(DRIVE_PREF_KEY, pref);
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
+
 const runtimeFirebaseConfig = {
   ...firebaseConfig,
   authDomain:
@@ -87,6 +112,8 @@ export const initAuth = (
   const onTokenChange = (token: string | null) => {
     if (token && auth.currentUser) {
       onAuthSuccess?.(auth.currentUser, token);
+    } else if (!token && !isSigningIn) {
+      onAuthFailure?.(auth.currentUser);
     }
   };
   tokenListeners.add(onTokenChange);

@@ -25,7 +25,11 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
-import { SCOPES as DRIVE_SCOPES, setAccessToken as setDriveAccessToken } from './googleDriveBackup';
+import {
+  SCOPES as DRIVE_SCOPES,
+  setAccessToken as setDriveAccessToken,
+  setDriveBackupPref,
+} from './googleDriveBackup';
 
 export const OWNER_ADMIN_EMAIL = 'farsaicra@gmail.com';
 export const OFFLINE_GRACE_DAYS = 30;
@@ -52,9 +56,14 @@ export const auth = getAuth(app);
 void setPersistence(auth, browserLocalPersistence).catch(() => {});
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
-const accessProvider = new GoogleAuthProvider();
-DRIVE_SCOPES.forEach((scope) => accessProvider.addScope(scope));
-accessProvider.setCustomParameters({ prompt: 'select_account' });
+function buildAccessProvider(includeDriveScope: boolean): GoogleAuthProvider {
+  const provider = new GoogleAuthProvider();
+  if (includeDriveScope) {
+    DRIVE_SCOPES.forEach((scope) => provider.addScope(scope));
+  }
+  provider.setCustomParameters({ prompt: 'select_account' });
+  return provider;
+}
 
 export enum OperationType {
   CREATE = 'create',
@@ -685,17 +694,32 @@ export function subscribeAuthState(cb: (user: User | null) => void): Unsubscribe
   return onAuthStateChanged(auth, cb);
 }
 
-export async function signInWithGoogleForAccess(): Promise<User> {
+export async function signInWithGoogleForAccess(options?: {
+  includeDriveScope?: boolean;
+}): Promise<User> {
+  const includeDriveScope = Boolean(options?.includeDriveScope);
   try {
     localStorage.removeItem(MANUAL_LOGOUT_STORAGE_KEY);
   } catch {
     // ignore
   }
   await idbDel(MANUAL_LOGOUT_STORAGE_KEY);
-  const res = await signInWithPopup(auth, accessProvider);
-  const credential = GoogleAuthProvider.credentialFromResult(res);
-  if (credential?.accessToken) {
-    setDriveAccessToken(credential.accessToken);
+  const provider = buildAccessProvider(includeDriveScope);
+  const res = await signInWithPopup(auth, provider);
+  if (includeDriveScope) {
+    setDriveBackupPref('enabled');
+    const credential = GoogleAuthProvider.credentialFromResult(res);
+    if (credential?.accessToken) {
+      setDriveAccessToken(credential.accessToken);
+    }
+  } else {
+    setDriveBackupPref('disabled');
+    setDriveAccessToken(null);
+    try {
+      localStorage.setItem('kumwatsadu-db-v1:driveAutoEnabled', '0');
+    } catch {
+      // ignore
+    }
   }
   return res.user;
 }

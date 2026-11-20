@@ -18,6 +18,8 @@ import {
   Eye,
   EyeOff,
   Shield,
+  Cloud,
+  HardDrive,
 } from 'lucide-react';
 import {
   AccessRequestDoc,
@@ -26,6 +28,7 @@ import {
   OFFLINE_GRACE_DAYS,
   parseDeviceLabels,
 } from './accessControl';
+import { getDriveBackupPref } from './googleDriveBackup';
 
 export type GateReason =
   | 'loading'
@@ -59,7 +62,7 @@ interface AccessGateProps {
   accessDoc: AccessRequestDoc | null;
   busy: boolean;
   errorMsg: string;
-  onSignIn: () => Promise<void>;
+  onSignIn: (options?: { includeDriveScope?: boolean }) => Promise<void>;
   onSignOut: () => Promise<void>;
   onRefreshStatus: () => Promise<void>;
   onSubmitRegistration: (form: AccessRegistrationForm) => Promise<void>;
@@ -105,6 +108,9 @@ export const AccessGate: React.FC<AccessGateProps> = ({
   const [unlockPassword, setUnlockPassword] = useState<string>('');
   const [showUnlockPw, setShowUnlockPw] = useState<boolean>(false);
   const [localPwErr, setLocalPwErr] = useState<string>('');
+  const [wantsDriveBackup, setWantsDriveBackup] = useState<boolean>(
+    () => getDriveBackupPref() === 'enabled'
+  );
 
   const boundIds = accessDoc?.approvedDeviceIds || [];
   const boundLabels = parseDeviceLabels(accessDoc?.approvedDeviceLabels || '');
@@ -249,11 +255,50 @@ export const AccessGate: React.FC<AccessGateProps> = ({
               </ul>
             </div>
 
+            <div className="access-policy-box" style={{ gap: 10, display: 'flex', flexDirection: 'column' }}>
+              <div className="access-policy-title">ต้องการสำรองข้อมูลขึ้น Google Drive ด้วยหรือไม่?</div>
+              <div className="access-choice-grid" role="radiogroup" aria-label="เลือกการสำรองข้อมูล Google Drive">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={!wantsDriveBackup}
+                  className={`access-choice-card${!wantsDriveBackup ? ' is-selected' : ''}`}
+                  onClick={() => setWantsDriveBackup(false)}
+                  disabled={busy}
+                >
+                  <div className="access-choice-head">
+                    <HardDrive className="h-4 w-4 shrink-0" />
+                    <span>เก็บข้อมูลในเครื่องเท่านั้น</span>
+                  </div>
+                  <p>
+                    ไม่ขอสิทธิ์เข้าถึง Google Drive และไม่แจ้งเตือนให้เชื่อมต่อ (สำรองลงเครื่อง/โฟลเดอร์ได้ตามปกติ และเปิดใช้ Drive ภายหลังได้ในหน้าตั้งค่า)
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={wantsDriveBackup}
+                  className={`access-choice-card${wantsDriveBackup ? ' is-selected' : ''}`}
+                  onClick={() => setWantsDriveBackup(true)}
+                  disabled={busy}
+                >
+                  <div className="access-choice-head">
+                    <Cloud className="h-4 w-4 shrink-0" />
+                    <span>สำรองข้อมูลขึ้น Google Drive ด้วย</span>
+                  </div>
+                  <p>
+                    ขอสิทธิ์เชื่อมต่อ Google Drive พร้อมกันในขั้นตอนนี้ เพื่อสำรองและกู้คืนข้อมูลบนคลาวด์ส่วนตัวได้สะดวก
+                  </p>
+                </button>
+              </div>
+            </div>
+
             <div className="access-signin-wrap">
               <button
                 type="button"
                 className="gsi-material-button access-google-btn"
-                onClick={() => void onSignIn()}
+                onClick={() => void onSignIn({ includeDriveScope: wantsDriveBackup })}
                 disabled={busy}
               >
                 <div className="gsi-material-button-state" />
@@ -279,7 +324,11 @@ export const AccessGate: React.FC<AccessGateProps> = ({
                     </svg>
                   </div>
                   <span className="gsi-material-button-contents">
-                    {busy ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบด้วย Google เพื่อขอสิทธิ์ / ใช้งาน'}
+                    {busy
+                      ? 'กำลังเข้าสู่ระบบ...'
+                      : wantsDriveBackup
+                      ? 'เข้าสู่ระบบด้วย Google พร้อมเชื่อมต่อ Drive'
+                      : 'เข้าสู่ระบบด้วย Google (ไม่เชื่อม Drive)'}
                   </span>
                 </div>
               </button>
